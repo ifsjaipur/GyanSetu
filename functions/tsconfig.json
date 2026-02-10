@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "noImplicitReturns": true,
+    "noUnusedLocals": false,
+    "outDir": "lib",
+    "sourceMap": true,
+    "strict": true,
+    "target": "es2020",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    },
+    "baseUrl": "."
+  },
+  "compileOnSave": true,
+  "include": ["src/**/*.ts", "../shared/**/*.ts"]
+}

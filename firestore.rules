@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════
+    // Helper Functions
+    // ═══════════════════════════════════════════
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserRole() {
+      return request.auth.token.role;
+    }
+
+    function getUserInstitutionId() {
+      return request.auth.token.institutionId;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && getUserRole() == 'super_admin';
+    }
+
+    function isInstitutionAdmin() {
+      return isAuthenticated() && getUserRole() == 'institution_admin';
+    }
+
+    function isInstructor() {
+      return isAuthenticated() && getUserRole() == 'instructor';
+    }
+
+    function isAdminOrAbove() {
+      return isSuperAdmin() || isInstitutionAdmin();
+    }
+
+    function isInstructorOrAbove() {
+      return isAdminOrAbove() || isInstructor();
+    }
+
+    function belongsToInstitution(institutionId) {
+      return getUserInstitutionId() == institutionId;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // ═══════════════════════════════════════════
+    // Institutions
+    // ═══════════════════════════════════════════
+    match /institutions/{institutionId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() || belongsToInstitution(institutionId)
+      );
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (
+        isInstitutionAdmin() && belongsToInstitution(institutionId)
+      );
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Users
+    // ═══════════════════════════════════════════
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (
+        isOwner(userId) ||
+        isSuperAdmin() ||
+        (isAdminOrAbove() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow update: if isAuthenticated() && (
+        isOwner(userId) ||
+        isSuperAdmin() ||
+        (isInstitutionAdmin() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow create: if false;  // Only Cloud Functions create user docs
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Courses
+    // ═══════════════════════════════════════════
+    match /courses/{courseId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (belongsToInstitution(resource.data.institutionId) && (
+          resource.data.status == 'published' ||
+          isInstructorOrAbove()
+        ))
+      );
+      allow create: if isAdminOrAbove() && belongsToInstitution(request.resource.data.institutionId);
+      allow update: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (isAdminOrAbove() && belongsToInstitution(resource.data.institutionId)) ||
+        (isInstructor() && belongsToInstitution(resource.data.institutionId)
+          && request.auth.uid in resource.data.instructorIds)
+      );
+      allow delete: if false;
+
+      // Modules subcollection
+      match /modules/{moduleId} {
+        allow read: if isAuthenticated() && belongsToInstitution(
+          get(/databases/$(database)/documents/courses/$(courseId)).data.institutionId
+        );
+        allow write: if isInstructorOrAbove();
+
+        // Lessons subcollection
+        match /lessons/{lessonId} {
+          allow read: if isAuthenticated() && belongsToInstitution(
+            get(/databases/$(database)/documents/courses/$(courseId)).data.institutionId
+          );
+          allow write: if isInstructorOrAbove();
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // Enrollments — write only via Cloud Functions
+    // ═══════════════════════════════════════════
+    match /enrollments/{enrollmentId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        isSuperAdmin() ||
+        (isAdminOrAbove() && belongsToInstitution(resource.data.institutionId)) ||
+        (isInstructor() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow create: if false;
+      allow update: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (isAdminOrAbove() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Video Progress — users write their own
+    // ═══════════════════════════════════════════
+    match /videoProgress/{progressId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        isInstructorOrAbove()
+      );
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isOwner(resource.data.userId);
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Payments — write only via Cloud Functions
+    // ═══════════════════════════════════════════
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        isSuperAdmin() ||
+        (isAdminOrAbove() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Certificates — public read for verification
+    // ═══════════════════════════════════════════
+    match /certificates/{certificateId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Exams
+    // ═══════════════════════════════════════════
+    match /exams/{examId} {
+      allow read: if isAuthenticated() && belongsToInstitution(resource.data.institutionId);
+      allow write: if isInstructorOrAbove() && belongsToInstitution(resource.data.institutionId);
+    }
+
+    match /examAttempts/{attemptId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        (isInstructorOrAbove() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && (
+        (isOwner(resource.data.userId) && resource.data.status == 'in_progress') ||
+        (isInstructorOrAbove() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow delete: if false;
+    }
+
+    // ═══════════════════════════════════════════
+    // Attendance
+    // ═══════════════════════════════════════════
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        (isInstructorOrAbove() && belongsToInstitution(resource.data.institutionId))
+      );
+      allow write: if isInstructorOrAbove() && belongsToInstitution(resource.data.institutionId);
+    }
+
+    // ═══════════════════════════════════════════
+    // Audit Logs — read by admins, write only via Cloud Functions
+    // ═══════════════════════════════════════════
+    match /auditLogs/{logId} {
+      allow read: if isAdminOrAbove() && belongsToInstitution(resource.data.institutionId);
+      allow write: if false;
+    }
+  }
+}

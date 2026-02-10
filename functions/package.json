@@ -1,0 +1,27 @@
+{
+  "name": "edu-platform-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloud Functions for the Education Platform",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "lint": "eslint --ext .ts src/",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "lib/functions/src/index.js",
+  "dependencies": {
+    "firebase-admin": "^13.6.1",
+    "firebase-functions": "^6.3.2",
+    "googleapis": "^148.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^25.2.2"
+  }
+}
