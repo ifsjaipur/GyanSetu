@@ -66,7 +66,12 @@ export default function LearnPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const courseRes = await fetch(`/api/courses/${courseId}`);
+        // Parallel fetch: course + enrollment (saves ~500ms)
+        const [courseRes, enrollRes] = await Promise.all([
+          fetch(`/api/courses/${courseId}`),
+          fetch(`/api/enrollments?courseId=${courseId}`),
+        ]);
+
         if (!courseRes.ok) {
           setError("Course not found");
           setLoading(false);
@@ -75,8 +80,6 @@ export default function LearnPage() {
         const courseData = await courseRes.json();
         setCourse(courseData);
 
-        // Fetch enrollment
-        const enrollRes = await fetch(`/api/enrollments?courseId=${courseId}`);
         if (!enrollRes.ok) {
           router.push(`/courses/${courseId}`);
           return;
@@ -95,7 +98,7 @@ export default function LearnPage() {
 
         setEnrollment(myEnrollment);
 
-        // Fetch completed lessons
+        // Fetch completed lessons (depends on enrollment ID)
         const progressRes = await fetch(`/api/enrollments/${myEnrollment.id}/progress`);
         if (progressRes.ok) {
           const progressData = await progressRes.json();

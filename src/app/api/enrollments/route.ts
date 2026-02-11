@@ -52,6 +52,35 @@ export async function GET(request: NextRequest) {
       ...doc.data(),
     }));
 
+    // Enrich with course info if ?include=course is set (avoids N+1 on dashboard)
+    const include = searchParams.get("include");
+    if (include === "course" && enrollments.length > 0) {
+      // Batch-fetch unique course docs
+      const courseIds = [...new Set(
+        enrollments.map((e) => (e as unknown as { courseId: string }).courseId).filter(Boolean)
+      )];
+      const courseDocs = await Promise.all(
+        courseIds.map((id) => db.collection("courses").doc(id).get())
+      );
+      const courseMap = new Map<string, { title: string; type: string; thumbnailUrl: string }>();
+      courseDocs.forEach((doc) => {
+        if (doc.exists) {
+          const d = doc.data()!;
+          courseMap.set(doc.id, { title: d.title, type: d.type, thumbnailUrl: d.thumbnailUrl || "" });
+        }
+      });
+
+      const enriched = enrollments.map((e) => {
+        const courseId = (e as unknown as { courseId: string }).courseId;
+        const course = courseId ? courseMap.get(courseId) : undefined;
+        return course
+          ? { ...e, courseTitle: course.title, courseType: course.type, courseThumbnailUrl: course.thumbnailUrl }
+          : e;
+      });
+
+      return NextResponse.json({ enrollments: enriched });
+    }
+
     return NextResponse.json({ enrollments });
   } catch (err) {
     console.error("GET /api/enrollments error:", err);

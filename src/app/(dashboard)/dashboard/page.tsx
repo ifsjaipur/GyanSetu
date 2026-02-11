@@ -28,32 +28,11 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const res = await fetch("/api/enrollments");
+        // Single API call with course info included — no N+1 waterfall
+        const res = await fetch("/api/enrollments?include=course");
         if (res.ok) {
           const data = await res.json();
-          const enrollList = data.enrollments || [];
-
-          // Fetch course titles for each enrollment
-          const withCourses = await Promise.all(
-            enrollList.map(async (e: EnrollmentWithCourse) => {
-              try {
-                const courseRes = await fetch(`/api/courses/${e.courseId}`);
-                if (courseRes.ok) {
-                  const course = await courseRes.json();
-                  return {
-                    ...e,
-                    courseTitle: course.title,
-                    courseThumbnailUrl: course.thumbnailUrl,
-                    courseType: course.type,
-                  };
-                }
-              } catch {
-                // ignore — course info not critical
-              }
-              return e;
-            })
-          );
-          setEnrollments(withCourses);
+          setEnrollments(data.enrollments || []);
         }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
