@@ -103,6 +103,11 @@ export async function POST(request: NextRequest) {
     // Link enrollment to payment
     await paymentRef.update({ enrollmentId: enrollmentRef.id });
 
+    // Increment enrollment count on the course
+    await db.collection("courses").doc(payment.courseId).update({
+      enrollmentCount: FieldValue.increment(1),
+    });
+
     return NextResponse.json({
       status: "verified",
       enrollmentId: enrollmentRef.id,

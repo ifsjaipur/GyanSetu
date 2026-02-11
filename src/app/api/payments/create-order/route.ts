@@ -87,6 +87,11 @@ export async function POST(request: NextRequest) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      // Increment enrollment count on the course
+      await db.collection("courses").doc(courseId).update({
+        enrollmentCount: FieldValue.increment(1),
+      });
+
       return NextResponse.json({
         free: true,
         enrollmentId: enrollmentRef.id,

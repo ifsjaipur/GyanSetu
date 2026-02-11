@@ -19,6 +19,18 @@ interface EnrollmentItem {
   courseTitle?: string;
 }
 
+// Firestore timestamps come as { _seconds, _nanoseconds } objects
+function formatFirestoreDate(val: unknown): string {
+  if (!val) return "—";
+  // Firestore Timestamp object
+  if (typeof val === "object" && val !== null && "_seconds" in val) {
+    return new Date((val as { _seconds: number })._seconds * 1000).toLocaleDateString();
+  }
+  // Already a string or number
+  const d = new Date(val as string | number);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+}
+
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-700",
   pending_payment: "bg-yellow-100 text-yellow-700",
@@ -121,9 +133,7 @@ export default function AdminEnrollmentsPage() {
                     </div>
                   </td>
                   <td className="py-3 text-xs text-[var(--muted-foreground)]">
-                    {enrollment.enrolledAt
-                      ? new Date(enrollment.enrolledAt).toLocaleDateString()
-                      : "—"}
+                    {formatFirestoreDate(enrollment.enrolledAt)}
                   </td>
                 </tr>
               ))}
