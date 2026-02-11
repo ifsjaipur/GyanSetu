@@ -18,7 +18,7 @@ const db = getFirestore();
  * 3. Sets custom claims: { role, institutionId }
  * 4. Creates a user document in Firestore
  */
-export const onUserCreate = functions.auth.user().onCreate(async (user) => {
+export const onUserCreate = functions.region("asia-south1").auth.user().onCreate(async (user) => {
   if (!user.email) {
     console.warn(`User ${user.uid} created without email, skipping.`);
     return;

@@ -1,4 +1,4 @@
-import { firestore } from "firebase-functions/v2";
+import * as functions from "firebase-functions/v1";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getClassroomClient } from "../lib/google-clients";
@@ -18,12 +18,9 @@ const db = getFirestore();
  * 4. Calculates accessEndDate for self-paced courses
  * 5. Updates the enrollment document
  */
-export const onEnrollmentCreate = firestore.onDocumentCreated(
-  "enrollments/{enrollmentId}",
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-
+export const onEnrollmentCreate = functions.region("asia-south1").firestore
+  .document("enrollments/{enrollmentId}")
+  .onCreate(async (snap) => {
     const enrollment = snap.data();
     const enrollmentId = snap.id;
 
@@ -174,5 +171,4 @@ export const onEnrollmentCreate = firestore.onDocumentCreated(
     } catch (err) {
       console.error(`Error processing enrollment ${enrollmentId}:`, err);
     }
-  }
-);
+  });
