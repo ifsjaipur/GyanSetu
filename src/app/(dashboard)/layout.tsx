@@ -14,10 +14,16 @@ function Sidebar() {
     userData?.role === "super_admin" ||
     userData?.role === "institution_admin";
 
+  const isInstructorOrAbove =
+    isAdmin || userData?.role === "instructor";
+
   const navItems = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/courses", label: "Courses" },
     { href: "/certificates", label: "Certificates" },
+    ...(isInstructorOrAbove
+      ? [{ href: "/instructor/courses", label: "Instructor" }]
+      : []),
     ...(isAdmin ? [{ href: "/admin/institutions", label: "Admin Panel" }] : []),
   ];
 
