@@ -34,6 +34,7 @@ export default function InstructorLayout({
     ? [
         { href: `/instructor/courses/${courseId}/sessions`, label: "Sessions" },
         { href: `/instructor/courses/${courseId}/attendance`, label: "Attendance" },
+        { href: `/instructor/courses/${courseId}/exams`, label: "Exams" },
         { href: `/instructor/courses/${courseId}/certificates`, label: "Certificates" },
       ]
     : [];

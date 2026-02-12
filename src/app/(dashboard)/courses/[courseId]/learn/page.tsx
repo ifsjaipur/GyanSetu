@@ -279,6 +279,13 @@ export default function LearnPage() {
           </div>
         </div>
 
+        <button
+          onClick={() => router.push(`/courses/${courseId}/exams`)}
+          className="mb-4 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-left hover:bg-[var(--muted)]"
+        >
+          Exams &amp; Assessments
+        </button>
+
         <div className="space-y-3">
           {course.modules.map((module, mi) => {
             const moduleLessonsCompleted = module.lessons.filter((l) =>

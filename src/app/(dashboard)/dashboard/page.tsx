@@ -11,12 +11,27 @@ interface EnrollmentWithCourse {
   courseTitle?: string;
   courseThumbnailUrl?: string;
   courseType?: string;
+  accessEndDate?: { _seconds: number } | null;
   progress: {
     completedLessons: number;
     totalLessons: number;
     percentComplete: number;
     lastLessonId: string | null;
   };
+}
+
+function getDaysRemaining(accessEndDate?: { _seconds: number } | null): number | null {
+  if (!accessEndDate) return null;
+  const endMs = accessEndDate._seconds * 1000;
+  return Math.ceil((endMs - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
+function ExpiryBadge({ days }: { days: number | null }) {
+  if (days === null) return null;
+  if (days <= 0) return <span className="text-xs font-medium text-red-600 bg-red-50 rounded-full px-2 py-0.5">Expired</span>;
+  if (days <= 7) return <span className="text-xs font-medium text-orange-600 bg-orange-50 rounded-full px-2 py-0.5">{days}d left</span>;
+  if (days <= 30) return <span className="text-xs font-medium text-yellow-700 bg-yellow-50 rounded-full px-2 py-0.5">{days}d left</span>;
+  return <span className="text-xs text-[var(--muted-foreground)]">{days}d left</span>;
 }
 
 export default function DashboardPage() {
@@ -154,11 +169,14 @@ export default function DashboardPage() {
                   <h3 className="font-semibold text-sm truncate">
                     {enrollment.courseTitle || "Untitled Course"}
                   </h3>
-                  {enrollment.courseType && (
-                    <span className="text-xs text-[var(--muted-foreground)] capitalize">
-                      {enrollment.courseType.replace(/_/g, " ")}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {enrollment.courseType && (
+                      <span className="text-xs text-[var(--muted-foreground)] capitalize">
+                        {enrollment.courseType.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    <ExpiryBadge days={getDaysRemaining(enrollment.accessEndDate)} />
+                  </div>
 
                   {/* Progress */}
                   <div className="mt-3">

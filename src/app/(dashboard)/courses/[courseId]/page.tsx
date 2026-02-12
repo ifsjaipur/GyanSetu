@@ -157,13 +157,21 @@ export default function CourseDetailPage() {
           </div>
 
           {isEnrolled ? (
-            <button
-              onClick={() => router.push(`/courses/${courseId}/learn`)}
-              className="mt-4 rounded-lg px-6 py-3 text-sm font-medium text-white"
-              style={{ backgroundColor: "#16a34a" }}
-            >
-              Continue Learning &rarr;
-            </button>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => router.push(`/courses/${courseId}/learn`)}
+                className="rounded-lg px-6 py-3 text-sm font-medium text-white"
+                style={{ backgroundColor: "#16a34a" }}
+              >
+                Continue Learning &rarr;
+              </button>
+              <button
+                onClick={() => router.push(`/courses/${courseId}/exams`)}
+                className="rounded-lg border border-[var(--border)] px-6 py-3 text-sm font-medium hover:bg-[var(--muted)]"
+              >
+                Exams
+              </button>
+            </div>
           ) : (
             <button
               onClick={() => router.push(`/courses/${courseId}/enroll`)}
