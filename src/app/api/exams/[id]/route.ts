@@ -20,6 +20,9 @@ export async function GET(
     const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     const examDoc = await db.collection("exams").doc(id).get();
     if (!examDoc.exists) {
       return NextResponse.json({ error: "Exam not found" }, { status: 404 });
@@ -28,12 +31,12 @@ export async function GET(
     const exam = { id: examDoc.id, ...examDoc.data() };
 
     // Students can only see published exams
-    if (decoded.role === "student" && examDoc.data()!.status !== "published") {
+    if (role === "student" && examDoc.data()!.status !== "published") {
       return NextResponse.json({ error: "Exam not found" }, { status: 404 });
     }
 
     // For students, include their attempts
-    if (decoded.role === "student") {
+    if (role === "student") {
       const attemptsSnap = await db
         .collection("examAttempts")
         .where("examId", "==", id)

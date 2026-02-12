@@ -15,6 +15,9 @@ export async function GET(request: NextRequest) {
     const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     let institutionId = decoded.institutionId;
     if (!institutionId) {
       const userDoc = await db.collection("users").doc(decoded.uid).get();
@@ -28,7 +31,7 @@ export async function GET(request: NextRequest) {
       .collection("certificates")
       .where("institutionId", "==", institutionId);
 
-    if (decoded.role === "student") {
+    if (role === "student") {
       query = query.where("userId", "==", decoded.uid);
     }
 

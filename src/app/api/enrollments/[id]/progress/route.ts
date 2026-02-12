@@ -170,9 +170,11 @@ export async function GET(
     const enrollment = enrollmentDoc.data()!;
 
     // Students can only view their own; admins/instructors can view any in institution
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
     if (enrollment.userId !== decoded.uid) {
-      const isAdminOrInstructor = ["super_admin", "institution_admin", "instructor"].includes(decoded.role);
-      if (!isAdminOrInstructor || (decoded.role !== "super_admin" && enrollment.institutionId !== decoded.institutionId)) {
+      const isAdminOrInstructor = ["super_admin", "institution_admin", "instructor"].includes(role);
+      if (!isAdminOrInstructor || (role !== "super_admin" && enrollment.institutionId !== decoded.institutionId)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }

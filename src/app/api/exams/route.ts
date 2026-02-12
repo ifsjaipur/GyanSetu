@@ -18,6 +18,9 @@ export async function GET(request: NextRequest) {
     const db = getAdminDb();
     const { searchParams } = request.nextUrl;
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     const courseId = searchParams.get("courseId");
     if (!courseId) {
       return NextResponse.json({ error: "courseId is required" }, { status: 400 });
@@ -28,7 +31,7 @@ export async function GET(request: NextRequest) {
       .where("courseId", "==", courseId);
 
     // Students only see published exams
-    if (decoded.role === "student") {
+    if (role === "student") {
       query = query.where("status", "==", "published");
     }
 
@@ -36,7 +39,7 @@ export async function GET(request: NextRequest) {
     const exams = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
     // For students, also fetch their attempts
-    if (decoded.role === "student") {
+    if (role === "student") {
       const attemptsSnap = await db
         .collection("examAttempts")
         .where("courseId", "==", courseId)

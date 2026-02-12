@@ -21,9 +21,12 @@ export async function GET(
     const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     let query = db.collection("examAttempts").where("examId", "==", examId);
 
-    if (decoded.role === "student") {
+    if (role === "student") {
       query = query.where("userId", "==", decoded.uid);
     }
 

@@ -18,8 +18,11 @@ export async function GET(request: NextRequest) {
     const db = getAdminDb();
     const { searchParams } = request.nextUrl;
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     // Resolve institutionId: from claims, query param, user doc, or default
-    let institutionId = decoded.role === "super_admin"
+    let institutionId = role === "super_admin"
       ? searchParams.get("institutionId") || decoded.institutionId
       : decoded.institutionId;
 
@@ -41,7 +44,7 @@ export async function GET(request: NextRequest) {
       .where("institutionId", "==", institutionId);
 
     // Students only see published courses
-    if (decoded.role === "student") {
+    if (role === "student") {
       query = query.where("status", "==", "published");
     }
 

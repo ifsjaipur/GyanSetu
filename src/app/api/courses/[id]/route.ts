@@ -21,6 +21,9 @@ export async function GET(
     const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     const courseDoc = await db.collection("courses").doc(id).get();
     if (!courseDoc.exists) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
@@ -28,13 +31,22 @@ export async function GET(
 
     const course = courseDoc.data()!;
 
-    // Check institution access
-    if (decoded.role !== "super_admin" && course.institutionId !== decoded.institutionId) {
+    // Check institution access — also resolve institutionId for new users
+    let userInstitutionId = decoded.institutionId;
+    if (!userInstitutionId) {
+      const userDoc = await db.collection("users").doc(decoded.uid).get();
+      if (userDoc.exists) userInstitutionId = userDoc.data()?.institutionId;
+    }
+    if (!userInstitutionId) {
+      userInstitutionId = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
+    }
+
+    if (role !== "super_admin" && course.institutionId !== userInstitutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Students can only see published courses
-    if (decoded.role === "student" && course.status !== "published") {
+    if (role === "student" && course.status !== "published") {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 

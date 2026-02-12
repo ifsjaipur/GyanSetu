@@ -26,12 +26,15 @@ export async function GET(request: NextRequest) {
       institutionId = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
     }
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     let query = db
       .collection("enrollments")
       .where("institutionId", "==", institutionId);
 
     // Students only see their own enrollments
-    if (decoded.role === "student") {
+    if (role === "student") {
       query = query.where("userId", "==", decoded.uid);
     } else {
       const userIdFilter = searchParams.get("userId");

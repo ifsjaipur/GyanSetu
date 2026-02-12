@@ -22,13 +22,16 @@ export async function GET(
     const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
+    // Treat missing role as student (claims may not have propagated yet for new users)
+    const role = decoded.role || "student";
+
     const courseDoc = await db.collection("courses").doc(courseId).get();
     if (!courseDoc.exists) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
     const course = courseDoc.data()!;
-    if (decoded.role !== "super_admin" && course.institutionId !== decoded.institutionId) {
+    if (role !== "super_admin" && course.institutionId !== decoded.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -37,7 +40,7 @@ export async function GET(
       .where("courseId", "==", courseId);
 
     // Students only see their own
-    if (decoded.role === "student") {
+    if (role === "student") {
       query = query.where("userId", "==", decoded.uid);
     }
 
