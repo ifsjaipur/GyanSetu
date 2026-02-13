@@ -109,7 +109,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
           </div>
         ) : (
           <span className="font-bold text-lg text-[var(--brand-primary)]">
-            {institution?.name || "GyanSetu"}
+            {institution?.name || ""}
           </span>
         )}
       </div>
@@ -169,6 +169,8 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 }
 
 function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
+  const { institution } = useInstitution();
+
   return (
     <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] p-3 lg:hidden">
       <button
@@ -182,7 +184,9 @@ function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
           <line x1="3" y1="18" x2="21" y2="18" />
         </svg>
       </button>
-      <span className="font-bold text-sm text-[var(--brand-primary)]">GyanSetu</span>
+      <span className="font-bold text-sm text-[var(--brand-primary)]">
+        {institution?.name || ""}
+      </span>
       <div className="w-8" />
     </div>
   );
