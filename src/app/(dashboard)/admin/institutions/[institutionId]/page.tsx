@@ -77,6 +77,12 @@ export default function InstitutionEditPage() {
 
       if (res.ok) {
         setMessage("Saved successfully");
+        // Apply branding colors immediately so the admin sees the change
+        const root = document.documentElement;
+        if (inst.branding.primaryColor) root.style.setProperty("--brand-primary", inst.branding.primaryColor);
+        if (inst.branding.secondaryColor) root.style.setProperty("--brand-secondary", inst.branding.secondaryColor);
+        if (inst.branding.accentColor) root.style.setProperty("--brand-accent", inst.branding.accentColor);
+        if (inst.branding.headerBgColor) root.style.setProperty("--brand-header-bg", inst.branding.headerBgColor);
       } else {
         const data = await res.json();
         setMessage(`Error: ${data.error}`);

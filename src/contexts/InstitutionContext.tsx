@@ -59,6 +59,22 @@ export function InstitutionProvider({ children }: { children: ReactNode }) {
     fetchInstitution();
   }, [institutionId]);
 
+  // Apply institution branding colors as CSS custom properties
+  useEffect(() => {
+    if (!institution?.branding) return;
+    const root = document.documentElement;
+    const b = institution.branding;
+    const vars: [string, string | undefined][] = [
+      ["--brand-primary", b.primaryColor],
+      ["--brand-secondary", b.secondaryColor],
+      ["--brand-accent", b.accentColor],
+      ["--brand-header-bg", b.headerBgColor],
+    ];
+    for (const [prop, value] of vars) {
+      if (value) root.style.setProperty(prop, value);
+    }
+  }, [institution]);
+
   return (
     <InstitutionContext.Provider
       value={{ institution, institutionId, loading }}
