@@ -45,11 +45,26 @@ A secure, scalable Learning Management System built on **Google Workspace** and 
 - Progress persisted to Firestore with debounced saves
 
 ### Live Classes & Attendance
-- Schedule live sessions with **Google Meet** integration
+- Schedule live sessions with **Google Meet** or **Zoom** integration
 - Automatic Meet link generation via Google Calendar API
+- Automatic **Zoom meeting creation** via Server-to-Server OAuth API
 - Session management: create, edit, delete sessions with recurrence support
 - Attendance tracking per session (present/absent/late)
 - Students see upcoming and past sessions on the learn page
+
+### Zoom Integration
+- **Server-to-Server OAuth** — single Pro account manages all meetings (no per-user OAuth)
+- **Automatic meeting creation** — select "Zoom (auto-create)" when scheduling a session; meeting is created with registration enabled and auto-approve
+- **Registration-enforced meetings** — each enrolled student gets a unique join URL via Zoom's registrant API
+- **Auto-registration on enrollment** — Cloud Function trigger registers new students in all upcoming Zoom meetings for their course
+- **Real-time participant tracking** — Zoom webhooks (`meeting.started`, `meeting.ended`, `meeting.participant_joined`, `meeting.participant_left`) push events to Firestore in real time
+- **Attendance sync** — "Sync from Zoom" button pulls participant reports from Zoom Reports API and maps to enrolled students (present/late/absent based on duration thresholds)
+- **Admin Zoom Dashboard** (`/admin/zoom`) — view all meetings, create standalone meetings, view participant reports, CSV export
+- **Meeting detail page** — registrant list, live participant view during meetings, post-meeting attendance report
+- **Reports page** (`/admin/zoom/reports`) — date-range and course-filtered aggregated reports with stats
+- **Webhook security** — HMAC-SHA256 signature verification + CRC challenge-response for endpoint validation
+- **Multi-tenant** — per-institution Zoom credentials stored in Firestore, falls back to environment variables
+- **Modular library** — `src/lib/zoom/` with auth, client, config, webhook-verify, and attendance modules
 
 ### Exams & Assessments
 - **Google Forms** integration for exam creation
@@ -142,6 +157,7 @@ A secure, scalable Learning Management System built on **Google Workspace** and 
   - Certificate generation, course creation, data resets
   - Captures IP address, user agent, timestamps
 - HMAC signature verification for payment webhooks
+- Zoom webhook HMAC-SHA256 verification + CRC endpoint validation
 - WhatsApp webhook verification token
 
 ### Error Handling & UX
@@ -190,10 +206,10 @@ A secure, scalable Learning Management System built on **Google Workspace** and 
 └───────────────────────────────────┘
         │
         ▼
-┌──────────────────┐  ┌────────────┐
-│    Razorpay       │  │  WhatsApp  │
-│  (Payments)       │  │ Cloud API  │
-└──────────────────┘  └────────────┘
+┌──────────────────┐  ┌────────────┐  ┌────────────┐
+│    Razorpay       │  │  WhatsApp  │  │    Zoom    │
+│  (Payments)       │  │ Cloud API  │  │  (S2S OAuth)│
+└──────────────────┘  └────────────┘  └────────────┘
 ```
 
 ### Key Design Decisions
@@ -217,6 +233,7 @@ A secure, scalable Learning Management System built on **Google Workspace** and 
 | **Video** | YouTube IFrame API (react-youtube), Google Drive embed |
 | **Payments** | Razorpay (India) |
 | **Notifications** | Web Push (VAPID), WhatsApp Cloud API |
+| **Live Meetings** | Zoom API v2 (S2S OAuth), Google Meet (Calendar API) |
 | **Google APIs** | Calendar, Meet, Classroom, Drive, Docs, Admin SDK |
 | **Validation** | Zod v4 |
 | **Hosting** | Vercel (Next.js) + Firebase (Cloud Functions) |
@@ -240,9 +257,10 @@ GoogleWorkspaceEdu/
 │   │   ├── video-progress.ts  # VideoProgress, WatchedSegment
 │   │   ├── payment.ts         # Payment records
 │   │   ├── certificate.ts     # Certificate type
-│   │   └── exam.ts            # Exam, ExamAttempt
+│   │   ├── exam.ts            # Exam, ExamAttempt
+│   │   └── zoom.ts            # Zoom meeting, registrant, participant types
 │   ├── enums/                 # Shared enumerations
-│   └── validators/            # Zod validation schemas
+│   └── validators/            # Zod validation schemas (incl. zoom.validator.ts)
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx              # Root layout (PWA meta)
@@ -265,6 +283,7 @@ GoogleWorkspaceEdu/
 │   │   │       ├── enrollments/    # Enrollment management
 │   │   │       ├── institutions/   # Institution config
 │   │   │       ├── analytics/      # Charts & KPIs
+│   │   │       ├── zoom/           # Zoom dashboard, meeting details, reports
 │   │   │       └── reset-data/     # Data management
 │   │   └── api/
 │   │       ├── auth/               # Session management
@@ -278,7 +297,8 @@ GoogleWorkspaceEdu/
 │   │       ├── users/              # User management
 │   │       ├── institutions/       # Institution CRUD
 │   │       ├── cron/               # Scheduled tasks
-│   │       └── webhooks/           # Razorpay + WhatsApp
+│   │       ├── webhooks/           # Razorpay + WhatsApp + Zoom
+│   │       └── zoom/              # Zoom meetings CRUD, registrants, reports
 │   ├── components/
 │   │   ├── VideoPlayer.tsx         # YouTube/Drive player
 │   │   ├── CheckpointOverlay.tsx   # Quiz overlay on video
@@ -293,6 +313,13 @@ GoogleWorkspaceEdu/
 │   ├── lib/
 │   │   ├── firebase/               # Client + Admin SDK init
 │   │   ├── google/                 # Google API wrappers
+│   │   ├── zoom/                   # Zoom API library
+│   │   │   ├── auth.ts             # S2S OAuth token management
+│   │   │   ├── client.ts           # Meeting CRUD, registrants, reports
+│   │   │   ├── config.ts           # Credential resolver
+│   │   │   ├── webhook-verify.ts   # HMAC verification + CRC
+│   │   │   ├── attendance.ts       # Participant-to-student matching
+│   │   │   └── index.ts            # Barrel export
 │   │   ├── notifications/
 │   │   │   ├── push.ts             # Web Push (VAPID)
 │   │   │   └── whatsapp.ts         # WhatsApp Cloud API
@@ -302,8 +329,11 @@ GoogleWorkspaceEdu/
 ├── functions/
 │   └── src/                        # Firebase Cloud Functions
 │       ├── index.ts                # Function exports
+│       ├── triggers/
+│       │   └── onEnrollmentCreate.ts  # Auto-register in Zoom + Classroom
 │       └── lib/
-│           └── google-clients.ts   # Google API (server-side)
+│           ├── google-clients.ts   # Google API (server-side)
+│           └── zoom-client.ts      # Zoom API for Cloud Functions
 ├── firestore.rules                 # Security rules
 ├── package.json
 └── tsconfig.json
@@ -320,6 +350,7 @@ GoogleWorkspaceEdu/
 - A **Google Cloud** project with Calendar, Classroom, Drive, Docs, and Admin SDK APIs enabled
 - A **Google Workspace** domain with a service account configured for domain-wide delegation
 - A **Razorpay** account (for payments)
+- A **Zoom** Pro account with a Server-to-Server OAuth app (for Zoom meetings)
 
 ### Installation
 
@@ -392,6 +423,13 @@ WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_BUSINESS_ACCOUNT_ID=
 WHATSAPP_VERIFY_TOKEN=
 
+# Zoom (Server-to-Server OAuth)
+ZOOM_ACCOUNT_ID=
+ZOOM_CLIENT_ID=
+ZOOM_CLIENT_SECRET=
+ZOOM_WEBHOOK_SECRET=
+ZOOM_DEFAULT_USER_ID=me
+
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
@@ -428,6 +466,27 @@ firebase deploy --only functions
 firebase deploy --only firestore:rules
 ```
 
+### Zoom Setup
+
+1. Go to [Zoom App Marketplace](https://marketplace.zoom.us/) and create a **Server-to-Server OAuth** app
+2. Note the **Account ID**, **Client ID**, and **Client Secret** — add them to `.env.local`
+3. Add required scopes:
+   - `meeting:write:meeting:admin` — create/update/delete meetings
+   - `meeting:write:registrant:admin` — add registrants
+   - `meeting:read:meeting:admin` — view meetings
+   - `meeting:read:participant:admin` — view participants
+   - `meeting:read:registrant:admin` — view registrants
+   - `report:read:meeting:admin` — meeting reports
+   - `report:read:list_meeting_participants:admin` — participant reports
+4. Under **Feature** > **Event Subscriptions**, add webhook endpoint:
+   ```
+   https://your-domain.vercel.app/api/webhooks/zoom
+   ```
+5. Click **Validate** to verify the CRC challenge passes
+6. Subscribe to events: `meeting.started`, `meeting.ended`, `meeting.participant_joined`, `meeting.participant_left`
+7. Note the **Secret Token** from the webhook config — set as `ZOOM_WEBHOOK_SECRET` in `.env.local` and Vercel
+8. Activate the app
+
 ---
 
 ## Screenshots
@@ -438,6 +497,7 @@ firebase deploy --only firestore:rules
 
 ## Roadmap
 
+- [x] Zoom integration (S2S OAuth, meetings, registrants, webhooks, reports, admin dashboard)
 - [ ] Google Cloud Storage video streaming with signed URLs
 - [ ] Instructor dashboard for video analytics
 - [ ] Server-side checkpoint answer validation
@@ -457,4 +517,4 @@ This project is proprietary software developed for the [Institute of Financial S
 
 ---
 
-Built with Next.js, Firebase, and Google Workspace APIs.
+Built with Next.js, Firebase, Google Workspace APIs, and Zoom API.
