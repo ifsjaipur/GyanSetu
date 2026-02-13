@@ -114,6 +114,48 @@ export default function InstitutionEditPage() {
       )}
 
       <div className="mt-6 space-y-6">
+        {/* Institution Name & Logo */}
+        <section className="rounded-lg border border-[var(--border)] p-4">
+          <h2 className="font-semibold">General</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium">Institution Name</label>
+              <input
+                type="text"
+                value={inst.name}
+                onChange={(e) => setInst({ ...inst, name: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium">Logo URL</label>
+              <input
+                type="text"
+                value={inst.branding.logoUrl}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    branding: { ...inst.branding, logoUrl: e.target.value },
+                  })
+                }
+                placeholder="https://example.com/logo.png"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+              {inst.branding.logoUrl && (
+                <div className="mt-2 flex items-center gap-2">
+                  <img
+                    src={inst.branding.logoUrl}
+                    alt="Logo preview"
+                    className="h-10 w-auto rounded border border-[var(--border)]"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                  <span className="text-xs text-[var(--muted-foreground)]">Preview</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
         {/* Branding */}
         <section className="rounded-lg border border-[var(--border)] p-4">
           <h2 className="font-semibold">Branding</h2>

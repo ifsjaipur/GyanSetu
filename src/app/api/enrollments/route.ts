@@ -73,13 +73,16 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      const enriched = enrollments.map((e) => {
-        const courseId = (e as unknown as { courseId: string }).courseId;
-        const course = courseId ? courseMap.get(courseId) : undefined;
-        return course
-          ? { ...e, courseTitle: course.title, courseType: course.type, courseThumbnailUrl: course.thumbnailUrl }
-          : e;
-      });
+      // Filter out enrollments whose course no longer exists (orphaned after reset)
+      const enriched = enrollments
+        .map((e) => {
+          const courseId = (e as unknown as { courseId: string }).courseId;
+          const course = courseId ? courseMap.get(courseId) : undefined;
+          return course
+            ? { ...e, courseTitle: course.title, courseType: course.type, courseThumbnailUrl: course.thumbnailUrl }
+            : null; // Course was deleted — skip this enrollment
+        })
+        .filter(Boolean);
 
       return NextResponse.json({ enrollments: enriched });
     }

@@ -3,20 +3,24 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function InstructorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { userData, loading } = useAuth();
+  const { userData, firebaseUser, loading } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const [courseTitle, setCourseTitle] = useState<string | null>(null);
 
   // Extract courseId from pathname for sub-nav
   const courseMatch = pathname.match(/\/instructor\/courses\/([^/]+)/);
   const courseId = courseMatch?.[1];
+
+  const allowedRoles = ["super_admin", "institution_admin", "instructor"];
+  const hasAccess = userData && allowedRoles.includes(userData.role);
 
   useEffect(() => {
     if (!courseId) {
@@ -37,16 +41,36 @@ export default function InstructorLayout({
     fetchCourse();
   }, [courseId]);
 
+  // Redirect unauthenticated users to login
+  useEffect(() => {
+    if (!loading && !firebaseUser) {
+      router.replace("/login");
+    }
+  }, [loading, firebaseUser, router]);
+
   if (loading) {
-    return <div className="text-[var(--muted-foreground)]">Loading...</div>;
+    return (
+      <div className="flex h-32 items-center justify-center">
+        <div className="text-[var(--muted-foreground)]">Loading...</div>
+      </div>
+    );
   }
 
-  const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-  if (!userData || !allowedRoles.includes(userData.role)) {
+  if (!firebaseUser) {
+    return null; // Will redirect via useEffect
+  }
+
+  if (!hasAccess) {
     return (
       <div className="text-center text-[var(--muted-foreground)]">
         <h2 className="text-xl font-bold">Access Denied</h2>
         <p className="mt-2">You do not have permission to view this page.</p>
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="mt-4 rounded-lg border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--muted)]"
+        >
+          Go to Dashboard
+        </button>
       </div>
     );
   }

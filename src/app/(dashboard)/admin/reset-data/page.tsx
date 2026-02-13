@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function ResetDataPage() {
+  const router = useRouter();
   const [confirmPhrase, setConfirmPhrase] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -94,6 +96,12 @@ export default function ResetDataPage() {
               </div>
             ))}
           </div>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="mt-4 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+          >
+            Go to Dashboard
+          </button>
         </div>
       )}
     </div>
