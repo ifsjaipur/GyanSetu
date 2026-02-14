@@ -21,8 +21,13 @@ async function ensureUserDoc(uid: string, email: string, displayName: string, ph
     const emailDomain = email.split("@")[1];
     let matchedInstitutionId = institutionId || "";
 
-    // If no institutionId in claims, try to find one by email domain
-    if (!matchedInstitutionId) {
+    // Generic email providers should NOT auto-assign to an institution
+    // even if they are in allowedEmailDomains (those users must choose explicitly)
+    const genericDomains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com", "protonmail.com"];
+    const isGenericEmail = genericDomains.includes(emailDomain.toLowerCase());
+
+    // If no institutionId in claims, try to find one by email domain (org-specific only)
+    if (!matchedInstitutionId && !isGenericEmail) {
       const institutionsSnap = await db.collection("institutions").get();
       for (const doc of institutionsSnap.docs) {
         const inst = doc.data();

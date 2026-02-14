@@ -32,19 +32,26 @@ export const onUserCreate = functions.region("asia-south1").auth.user().onCreate
   const emailDomain = user.email.split("@")[1];
   const role = "student";
 
-  // Find institution by email domain
+  // Generic email providers should NOT auto-assign to an institution
+  // even if they are in allowedEmailDomains (those users must choose explicitly)
+  const genericDomains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com", "protonmail.com"];
+  const isGenericEmail = genericDomains.includes(emailDomain.toLowerCase());
+
+  // Find institution by email domain (org-specific domains only)
   const institutionsSnap = await db.collection("institutions").get();
 
   let matchedInstitutionId: string | null = null;
 
-  for (const doc of institutionsSnap.docs) {
-    const inst = doc.data();
-    if (!inst.isActive) continue;
+  if (!isGenericEmail) {
+    for (const doc of institutionsSnap.docs) {
+      const inst = doc.data();
+      if (!inst.isActive) continue;
 
-    // Check if user's domain matches the institution's allowed domains
-    if (inst.allowedEmailDomains?.includes(emailDomain)) {
-      matchedInstitutionId = doc.id;
-      break;
+      // Check if user's domain matches the institution's allowed domains
+      if (inst.allowedEmailDomains?.includes(emailDomain)) {
+        matchedInstitutionId = doc.id;
+        break;
+      }
     }
   }
 

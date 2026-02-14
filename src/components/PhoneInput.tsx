@@ -37,21 +37,19 @@ export default function PhoneInput({ value, onChange, required, id }: PhoneInput
   const [number, setNumber] = useState("");
   const [geoDetected, setGeoDetected] = useState(false);
 
-  // Parse initial value if it starts with a country code
+  // Parse value when it changes (handles async userData loading)
   useEffect(() => {
-    if (value && !geoDetected) {
-      const match = COUNTRIES.find((c) => value.startsWith(c.code));
-      if (match) {
-        setCountryCode(match.code);
-        setNumber(value.slice(match.code.length).trim());
-      } else if (value.startsWith("+")) {
-        // Unknown code, keep as-is
-        setNumber(value);
-      } else {
-        setNumber(value);
-      }
+    if (!value) return;
+    const match = COUNTRIES.find((c) => value.startsWith(c.code));
+    if (match) {
+      setCountryCode(match.code);
+      setNumber(value.slice(match.code.length).trim());
+    } else if (value.startsWith("+")) {
+      setNumber(value);
+    } else {
+      setNumber(value);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value]);
 
   // Geo-detect country on mount
   useEffect(() => {

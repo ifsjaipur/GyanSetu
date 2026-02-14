@@ -13,6 +13,7 @@ interface AdmissionItem {
   userPhone: string | null;
   displayName: string;
   email: string;
+  role: string;
   city: string | null;
   state: string | null;
   joinMethod: string;

@@ -102,10 +102,16 @@ export async function GET(request: NextRequest) {
     }
 
     const snap = await query.limit(200).get();
-    const memberships = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const memberships = snap.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      // Only show student memberships in admin views (filter out admin/instructor self-memberships)
+      .filter((m) => {
+        const memberRole = (m as unknown as { role?: string }).role;
+        return !memberRole || memberRole === "student";
+      });
 
     // Enrich with institution name
     const instIds = [
