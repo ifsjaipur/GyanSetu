@@ -32,10 +32,43 @@ function getInstitutionIdFromCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function applyBrandingColors(branding: Institution["branding"] | undefined) {
+  if (!branding || typeof document === "undefined") return;
+  const root = document.documentElement;
+  const vars: [string, string | undefined][] = [
+    ["--brand-primary", branding.primaryColor],
+    ["--brand-secondary", branding.secondaryColor],
+    ["--brand-accent", branding.accentColor],
+    ["--brand-header-bg", branding.headerBgColor],
+  ];
+  for (const [prop, value] of vars) {
+    if (value) root.style.setProperty(prop, value);
+  }
+}
+
+function getInitialInstitution(institutionId: string | null): Institution | null {
+  if (!institutionId || typeof window === "undefined") return null;
+  try {
+    const cached = sessionStorage.getItem(`inst_${institutionId}`);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      if (Date.now() - timestamp < 30 * 60 * 1000) {
+        // Apply branding immediately to prevent theme flash
+        applyBrandingColors((data as Institution).branding);
+        return data as Institution;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export function InstitutionProvider({ children }: { children: ReactNode }) {
-  const [institution, setInstitution] = useState<Institution | null>(null);
-  const [loading, setLoading] = useState(true);
   const institutionId = getInstitutionIdFromCookie();
+  const cachedInstitution = getInitialInstitution(institutionId);
+  const [institution, setInstitution] = useState<Institution | null>(cachedInstitution);
+  const [loading, setLoading] = useState(!cachedInstitution);
 
   useEffect(() => {
     async function fetchInstitution() {
@@ -44,29 +77,20 @@ export function InstitutionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check sessionStorage cache (30-minute TTL)
-      const cacheKey = `inst_${institutionId}`;
-      try {
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-          const { data, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < 30 * 60 * 1000) {
-            setInstitution(data as Institution);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch {
-        // sessionStorage unavailable or corrupt — continue to fetch
-      }
+      // Skip fetch if we already loaded from cache synchronously
+      if (cachedInstitution) return;
 
       try {
         const instDoc = await getDoc(doc(getClientDb(), "institutions", institutionId));
         if (instDoc.exists()) {
           const data = { id: instDoc.id, ...instDoc.data() } as Institution;
           setInstitution(data);
+          applyBrandingColors(data.branding);
           try {
-            sessionStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
+            sessionStorage.setItem(
+              `inst_${institutionId}`,
+              JSON.stringify({ data, timestamp: Date.now() })
+            );
           } catch {
             // sessionStorage full or unavailable — ignore
           }
@@ -79,22 +103,11 @@ export function InstitutionProvider({ children }: { children: ReactNode }) {
     }
 
     fetchInstitution();
-  }, [institutionId]);
+  }, [institutionId, cachedInstitution]);
 
-  // Apply institution branding colors as CSS custom properties
+  // Apply branding when institution changes (e.g. admin updates branding)
   useEffect(() => {
-    if (!institution?.branding) return;
-    const root = document.documentElement;
-    const b = institution.branding;
-    const vars: [string, string | undefined][] = [
-      ["--brand-primary", b.primaryColor],
-      ["--brand-secondary", b.secondaryColor],
-      ["--brand-accent", b.accentColor],
-      ["--brand-header-bg", b.headerBgColor],
-    ];
-    for (const [prop, value] of vars) {
-      if (value) root.style.setProperty(prop, value);
-    }
+    applyBrandingColors(institution?.branding);
   }, [institution]);
 
   return (

@@ -1,11 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  /* Institution branding — overridden dynamically per institution */
-  --brand-primary: #1e40af;
-  --brand-secondary: #f59e0b;
-  --brand-accent: #10b981;
-  --brand-header-bg: #1e293b;
+  /* Institution branding — overridden dynamically by InstitutionContext.
+     Defaults are neutral gray to prevent theme flash before real colors load. */
+  --brand-primary: #374151;
+  --brand-secondary: #6b7280;
+  --brand-accent: #4b5563;
+  --brand-header-bg: #1f2937;
   --brand-text-on-primary: #ffffff;
 
   /* Layout */

@@ -45,17 +45,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const db = getClientDb();
       const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
       if (userDoc.exists()) {
-        // Fetch memberships subcollection
-        const membershipsSnap = await getDocs(
-          collection(db, "users", firebaseUser.uid, "memberships")
-        );
-        const memberships = membershipsSnap.docs.map(
-          (d) => d.data() as InstitutionMembership
-        );
+        const userData = userDoc.data() as User;
+
+        // Fetch memberships — don't let this fail the entire auth load
+        let memberships: InstitutionMembership[] = [];
+        try {
+          const membershipsSnap = await getDocs(
+            collection(db, "users", firebaseUser.uid, "memberships")
+          );
+          memberships = membershipsSnap.docs.map(
+            (d) => d.data() as InstitutionMembership
+          );
+        } catch (membershipErr) {
+          console.warn("Memberships fetch failed (non-blocking):", membershipErr);
+        }
 
         setState({
           firebaseUser,
-          userData: userDoc.data() as User,
+          userData,
           memberships,
           loading: false,
           error: null,
@@ -72,7 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           error: null,
         });
       }
-    } catch {
+    } catch (err) {
+      console.warn("fetchUserData error (attempt " + attempt + "):", err);
       // Firestore permission error — likely new user whose claims haven't propagated yet
       if (attempt < maxAttempts) {
         setTimeout(() => fetchUserData(firebaseUser, attempt + 1), delay);
