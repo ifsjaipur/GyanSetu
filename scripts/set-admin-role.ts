@@ -7,14 +7,31 @@
  * Example:
  *   npx tsx scripts/set-admin-role.ts sachin@ifsjaipur.com
  *
- * Requires GOOGLE_APPLICATION_CREDENTIALS env var pointing to a service account key.
+ * Reads Firebase credentials from .env.local.
  */
 
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env.local from project root
+config({ path: resolve(__dirname, "..", ".env.local") });
+
+const projectId = process.env.FIREBASE_PROJECT_ID;
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+
+if (!projectId || !clientEmail || !privateKey) {
+  console.error("Missing Firebase Admin credentials in .env.local");
+  console.error("Required: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY");
+  process.exit(1);
+}
 
 if (admin.apps.length === 0) {
-  admin.initializeApp();
+  admin.initializeApp({
+    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+  });
 }
 
 const auth = admin.auth();
