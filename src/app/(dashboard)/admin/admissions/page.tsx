@@ -8,12 +8,17 @@ import { useAuth } from "@/contexts/AuthContext";
 
 interface AdmissionItem {
   userId: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string | null;
   displayName: string;
   email: string;
   city: string | null;
   state: string | null;
   joinMethod: string;
   status: string;
+  institutionId: string;
+  institutionName: string | null;
   requestedAt: { _seconds: number; _nanoseconds: number } | string | null;
   reviewedAt: { _seconds: number; _nanoseconds: number } | string | null;
   reviewNote: string | null;
@@ -93,6 +98,11 @@ export default function AdminAdmissionsPage() {
   const [activeTab, setActiveTab] = useState<StatusTab>("pending");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Search & pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [perPage, setPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Reject modal state
   const [rejectModal, setRejectModal] = useState<{
     open: boolean;
@@ -123,15 +133,12 @@ export default function AdminAdmissionsPage() {
     }
   }, [authLoading, userData, router]);
 
-  /* ---------- Fetch admissions ---------- */
+  /* ---------- Fetch admissions (all statuses, filter client-side) ---------- */
 
   const fetchAdmissions = useCallback(async () => {
     setLoading(true);
     try {
-      const statusParam = activeTab === "all" ? "" : `?status=${activeTab}`;
-      const res = await fetch(`/api/memberships${statusParam}`, {
-        cache: "no-store",
-      });
+      const res = await fetch("/api/memberships", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setAdmissions(data.memberships || []);
@@ -141,7 +148,7 @@ export default function AdminAdmissionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     if (
@@ -271,6 +278,33 @@ export default function AdminAdmissionsPage() {
     (a) => a.status === "approved"
   ).length;
 
+  // Reset to page 1 when search or tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeTab]);
+
+  /* ---------- Search + Pagination ---------- */
+
+  const filteredAdmissions = admissions.filter((a) => {
+    // Filter by active tab
+    if (activeTab !== "all" && a.status !== activeTab) return false;
+
+    // Filter by search query
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const name = (a.userName || a.displayName || "").toLowerCase();
+    const email = (a.userEmail || a.email || "").toLowerCase();
+    const phone = (a.userPhone || "").toLowerCase();
+    return name.includes(q) || email.includes(q) || phone.includes(q);
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredAdmissions.length / perPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedAdmissions = filteredAdmissions.slice(
+    (safePage - 1) * perPage,
+    safePage * perPage
+  );
+
   /* ---------- Guard render ---------- */
 
   if (
@@ -335,130 +369,209 @@ export default function AdminAdmissionsPage() {
         ))}
       </div>
 
+      {/* Search + Per-page controls */}
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <input
+          type="text"
+          placeholder="Search by name, email, or phone..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] sm:max-w-xs"
+        />
+        <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+          <span>Show</span>
+          <select
+            value={perPage}
+            onChange={(e) => {
+              setPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+          >
+            <option value={10}>10</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+          <span>per page</span>
+        </div>
+      </div>
+
       {/* Table */}
       {loading ? (
         <div className="mt-8 text-[var(--muted-foreground)]">Loading...</div>
-      ) : admissions.length === 0 ? (
+      ) : filteredAdmissions.length === 0 ? (
         <div className="mt-8 text-center text-[var(--muted-foreground)]">
-          No {activeTab === "all" ? "" : activeTab} admission requests found.
+          {searchQuery.trim()
+            ? "No results matching your search."
+            : `No ${activeTab === "all" ? "" : activeTab} admission requests found.`}
         </div>
       ) : (
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)] text-left text-[var(--muted-foreground)]">
-                <th className="pb-3 pr-4 font-medium">Student</th>
-                <th className="pb-3 pr-4 font-medium">Location</th>
-                <th className="pb-3 pr-4 font-medium">Join Method</th>
-                <th className="pb-3 pr-4 font-medium">Requested</th>
-                <th className="pb-3 pr-4 font-medium">Status</th>
-                <th className="pb-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {admissions.map((admission) => (
-                <tr
-                  key={admission.userId}
-                  className="border-b border-[var(--border)] transition-colors hover:bg-[var(--card)]"
-                >
-                  {/* Student Name + Email */}
-                  <td className="py-3 pr-4">
-                    <div className="font-medium">
-                      {admission.displayName || admission.userId}
-                    </div>
-                    <div className="text-xs text-[var(--muted-foreground)]">
-                      {admission.email}
-                    </div>
-                  </td>
+        <>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left text-[var(--muted-foreground)]">
+                  <th className="pb-3 pr-4 font-medium">Student</th>
+                  <th className="pb-3 pr-4 font-medium">Institution</th>
+                  <th className="pb-3 pr-4 font-medium">Join Method</th>
+                  <th className="pb-3 pr-4 font-medium">Requested</th>
+                  <th className="pb-3 pr-4 font-medium">Status</th>
+                  <th className="pb-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedAdmissions.map((admission) => (
+                  <tr
+                    key={admission.userId}
+                    className="border-b border-[var(--border)] transition-colors hover:bg-[var(--card)]"
+                  >
+                    {/* Student Name + Email + Phone */}
+                    <td className="py-3 pr-4">
+                      <div className="font-medium">
+                        {admission.userName || admission.displayName || admission.userId}
+                      </div>
+                      <div className="text-xs text-[var(--muted-foreground)]">
+                        {admission.userEmail || admission.email}
+                      </div>
+                      {admission.userPhone && (
+                        <div className="text-xs text-[var(--muted-foreground)]">
+                          {admission.userPhone}
+                        </div>
+                      )}
+                    </td>
 
-                  {/* City/State */}
-                  <td className="py-3 pr-4 text-xs text-[var(--muted-foreground)]">
-                    {admission.city || admission.state
-                      ? [admission.city, admission.state]
-                          .filter(Boolean)
-                          .join(", ")
-                      : "\u2014"}
-                  </td>
+                    {/* Institution */}
+                    <td className="py-3 pr-4 text-xs text-[var(--muted-foreground)]">
+                      {admission.institutionName || admission.institutionId || "\u2014"}
+                    </td>
 
-                  {/* Join Method */}
-                  <td className="py-3 pr-4">
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-                      {JOIN_METHOD_LABELS[admission.joinMethod] ||
-                        admission.joinMethod}
-                    </span>
-                  </td>
+                    {/* Join Method */}
+                    <td className="py-3 pr-4">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                        {JOIN_METHOD_LABELS[admission.joinMethod] ||
+                          admission.joinMethod}
+                      </span>
+                    </td>
 
-                  {/* Date Requested */}
-                  <td className="py-3 pr-4 text-xs text-[var(--muted-foreground)]">
-                    {formatTimestamp(admission.requestedAt)}
-                  </td>
+                    {/* Date Requested */}
+                    <td className="py-3 pr-4 text-xs text-[var(--muted-foreground)]">
+                      {formatTimestamp(admission.requestedAt)}
+                    </td>
 
-                  {/* Status Badge */}
-                  <td className="py-3 pr-4">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        STATUS_COLORS[admission.status] || ""
+                    {/* Status Badge */}
+                    <td className="py-3 pr-4">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          STATUS_COLORS[admission.status] || ""
+                        }`}
+                      >
+                        {admission.status}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-3">
+                      {admission.status === "pending" ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleApprove(admission.userId)}
+                            disabled={actionLoading === admission.userId}
+                            className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                          >
+                            {actionLoading === admission.userId
+                              ? "..."
+                              : "Approve"}
+                          </button>
+                          <button
+                            onClick={() =>
+                              setRejectModal({
+                                open: true,
+                                userId: admission.userId,
+                                note: "",
+                              })
+                            }
+                            disabled={actionLoading === admission.userId}
+                            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                          <button
+                            onClick={() => {
+                              fetchInstitutions();
+                              setTransferModal({
+                                open: true,
+                                userId: admission.userId,
+                                note: "",
+                                institutionId: "",
+                              });
+                            }}
+                            disabled={actionLoading === admission.userId}
+                            className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Transfer
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {admission.reviewNote
+                            ? `Note: ${admission.reviewNote}`
+                            : "\u2014"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <div className="text-[var(--muted-foreground)]">
+              Showing {(safePage - 1) * perPage + 1}–{Math.min(safePage * perPage, filteredAdmissions.length)} of {filteredAdmissions.length}
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+              >
+                Prev
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .reduce<(number | "...")[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "..." ? (
+                    <span key={`dot-${i}`} className="px-2 py-1 text-[var(--muted-foreground)]">...</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`rounded-lg border px-3 py-1 text-sm font-medium transition-colors ${
+                        p === safePage
+                          ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white"
+                          : "border-[var(--border)] hover:bg-[var(--border)]"
                       }`}
                     >
-                      {admission.status}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="py-3">
-                    {admission.status === "pending" ? (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleApprove(admission.userId)}
-                          disabled={actionLoading === admission.userId}
-                          className="rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
-                        >
-                          {actionLoading === admission.userId
-                            ? "..."
-                            : "Approve"}
-                        </button>
-                        <button
-                          onClick={() =>
-                            setRejectModal({
-                              open: true,
-                              userId: admission.userId,
-                              note: "",
-                            })
-                          }
-                          disabled={actionLoading === admission.userId}
-                          className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-                        >
-                          Reject
-                        </button>
-                        <button
-                          onClick={() => {
-                            fetchInstitutions();
-                            setTransferModal({
-                              open: true,
-                              userId: admission.userId,
-                              note: "",
-                              institutionId: "",
-                            });
-                          }}
-                          disabled={actionLoading === admission.userId}
-                          className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          Transfer
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {admission.reviewNote
-                          ? `Note: ${admission.reviewNote}`
-                          : "\u2014"}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="rounded-lg border border-[var(--border)] px-3 py-1 text-sm font-medium transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Reject Modal */}

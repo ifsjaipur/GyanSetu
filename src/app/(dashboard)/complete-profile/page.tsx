@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
@@ -8,10 +8,23 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useInstitution } from "@/contexts/InstitutionContext";
 import PhoneInput from "@/components/PhoneInput";
 
+interface BrowseInstitution {
+  id: string;
+  name: string;
+  location?: { city?: string; state?: string; country?: string };
+  branding?: { institutionTagline?: string };
+}
+
 export default function CompleteProfilePage() {
   const { firebaseUser, userData, refreshUser } = useAuth();
   const { institution } = useInstitution();
   const router = useRouter();
+
+  // Institution selection state
+  const [institutions, setInstitutions] = useState<BrowseInstitution[]>([]);
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [showInviteCode, setShowInviteCode] = useState(false);
 
   const [form, setForm] = useState({
     displayName: userData?.displayName || "",
@@ -34,6 +47,21 @@ export default function CompleteProfilePage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch browseable institutions for users without an institution
+  useEffect(() => {
+    if (userData?.institutionId) return; // already has an institution
+    async function fetchInstitutions() {
+      try {
+        const res = await fetch("/api/institutions?browse=true");
+        if (res.ok) {
+          const data = await res.json();
+          setInstitutions(data.institutions || []);
+        }
+      } catch { /* ignore */ }
+    }
+    fetchInstitutions();
+  }, [userData?.institutionId]);
 
   // Redirect if profile already complete
   if (userData?.profileComplete) {
@@ -104,14 +132,33 @@ export default function CompleteProfilePage() {
 
       await setDoc(doc(db, "users", firebaseUser.uid), updateData, { merge: true });
 
-      await refreshUser();
-      // Domain users already have an institutionId — go to dashboard.
-      // External users need to select/join an institution first.
-      if (userData?.institutionId) {
-        router.push("/dashboard");
-      } else {
-        router.push("/select-institution");
+      // If user selected an institution, create a membership request
+      if (selectedInstitutionId && !userData?.institutionId) {
+        try {
+          const body: Record<string, string> = {
+            institutionId: selectedInstitutionId,
+            joinMethod: inviteCode.trim() ? "invite_code" : "browse",
+          };
+          if (inviteCode.trim()) body.inviteCode = inviteCode.trim();
+
+          const memberRes = await fetch("/api/memberships", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+
+          if (!memberRes.ok) {
+            const memberData = await memberRes.json();
+            // Don't block profile completion — just warn
+            console.warn("Membership request failed:", memberData.error);
+          }
+        } catch {
+          console.warn("Membership request failed (network error)");
+        }
       }
+
+      await refreshUser();
+      router.push("/dashboard");
     } catch (err) {
       console.error("Profile update failed:", err);
       setError("Failed to save profile. Please try again.");
@@ -278,6 +325,58 @@ export default function CompleteProfilePage() {
             </div>
           </fieldset>
 
+          {/* Institution Selection (for users without an institution) */}
+          {!userData?.institutionId && institutions.length > 0 && (
+            <fieldset className="space-y-3 border-t border-[var(--border)] pt-4">
+              <legend className="text-sm font-medium">
+                Select an Institution{" "}
+                <span className="font-normal text-[var(--muted-foreground)]">(Optional)</span>
+              </legend>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                You can join an institution now or do it later from your dashboard.
+              </p>
+              <select
+                value={selectedInstitutionId}
+                onChange={(e) => {
+                  setSelectedInstitutionId(e.target.value);
+                  setShowInviteCode(false);
+                  setInviteCode("");
+                }}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              >
+                <option value="">Skip for now</option>
+                {institutions.map((inst) => (
+                  <option key={inst.id} value={inst.id}>
+                    {inst.name}
+                    {inst.location?.city ? ` — ${inst.location.city}` : ""}
+                    {inst.location?.state ? `, ${inst.location.state}` : ""}
+                  </option>
+                ))}
+              </select>
+
+              {selectedInstitutionId && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteCode(!showInviteCode)}
+                    className="text-xs text-[var(--brand-primary)] hover:underline"
+                  >
+                    {showInviteCode ? "Hide invite code" : "Have an invite code?"}
+                  </button>
+                  {showInviteCode && (
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value)}
+                      placeholder="Enter invite code (optional)"
+                      className="mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                    />
+                  )}
+                </div>
+              )}
+            </fieldset>
+          )}
+
           {/* Parent/Guardian Section */}
           <div className="border-t border-[var(--border)] pt-4">
             <button
@@ -383,9 +482,11 @@ export default function CompleteProfilePage() {
               className="mt-0.5 h-4 w-4 rounded border-gray-300"
             />
             <label htmlFor="consent" className="text-sm">
-              I agree to share my name, email, and phone number with{" "}
-              <strong>{institution?.name || "this institution"}</strong> for
-              enrollment and communication purposes.
+              I agree to share my name, email, and phone number
+              {institution?.name || selectedInstitutionId
+                ? <> with <strong>{institution?.name || institutions.find(i => i.id === selectedInstitutionId)?.name || "the selected institution"}</strong></>
+                : null}{" "}
+              for enrollment and communication purposes.
             </label>
           </div>
 

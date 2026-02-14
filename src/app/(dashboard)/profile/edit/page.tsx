@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useInstitution } from "@/contexts/InstitutionContext";
 import PhoneInput from "@/components/PhoneInput";
+import Link from "next/link";
 
 export default function ProfileEditPage() {
-  const { firebaseUser, userData, refreshUser } = useAuth();
+  const { firebaseUser, userData, memberships, refreshUser } = useAuth();
+  const { institution } = useInstitution();
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -181,6 +184,35 @@ export default function ProfileEditPage() {
               onChange={(val) => setForm((f) => ({ ...f, phone: val }))}
             />
           </div>
+        </div>
+
+        {/* Institution Info */}
+        <div className="border-t border-[var(--border)] pt-4">
+          <label className="block text-sm font-medium">Institution</label>
+          {institution ? (
+            <div className="mt-1 rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm">
+              <span className="font-medium">{institution.name}</span>
+              {userData?.role && (
+                <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                  ({userData.role.replace(/_/g, " ")})
+                </span>
+              )}
+            </div>
+          ) : memberships.some((m) => m.status === "pending") ? (
+            <div className="mt-1 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-700">
+              Membership request pending approval
+            </div>
+          ) : (
+            <div className="mt-1">
+              <p className="text-sm text-[var(--muted-foreground)]">No institution joined yet.</p>
+              <Link
+                href="/select-institution"
+                className="mt-1 inline-block text-sm font-medium text-[var(--brand-primary)] hover:underline"
+              >
+                Browse and join an institution
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Parent / Guardian */}

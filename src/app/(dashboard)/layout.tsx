@@ -193,6 +193,37 @@ function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
   );
 }
 
+function ProfileCompleteGuard({ children }: { children: React.ReactNode }) {
+  const { userData, loading } = useAuth();
+  const pathname = usePathname();
+
+  // Allow access to complete-profile and select-institution pages without redirect
+  const allowedPaths = ["/complete-profile", "/select-institution"];
+  const isAllowedPath = allowedPaths.some((p) => pathname.startsWith(p));
+
+  if (!loading && userData && !userData.profileComplete && !isAllowedPath) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-8 text-center">
+          <h2 className="text-lg font-bold">Complete Your Profile</h2>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+            Please complete your profile to continue using the platform.
+          </p>
+          <a
+            href="/complete-profile"
+            className="mt-4 inline-block rounded-lg px-6 py-2.5 text-sm font-medium text-white"
+            style={{ backgroundColor: "var(--brand-primary)" }}
+          >
+            Complete Profile
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -234,7 +265,9 @@ export default function DashboardLayout({
   return (
     <AuthProvider>
       <InstitutionProvider>
-        <DashboardShell>{children}</DashboardShell>
+        <DashboardShell>
+          <ProfileCompleteGuard>{children}</ProfileCompleteGuard>
+        </DashboardShell>
       </InstitutionProvider>
     </AuthProvider>
   );

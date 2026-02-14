@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
           .filter(Boolean)
       ),
     ];
-    const userMap = new Map<string, { displayName: string; email: string }>();
+    const userMap = new Map<string, { displayName: string; email: string; phone: string | null }>();
     if (userIds.length > 0) {
       const userRefs = userIds.map((id) => db.collection("users").doc(id));
       const userDocs = await db.getAll(...userRefs);
@@ -144,6 +144,7 @@ export async function GET(request: NextRequest) {
           userMap.set(doc.id, {
             displayName: d.displayName || d.email || doc.id,
             email: d.email || "",
+            phone: d.phone || null,
           });
         }
       });
@@ -157,7 +158,7 @@ export async function GET(request: NextRequest) {
         ...m,
         institutionName: instMap.get(institutionId) || null,
         ...(user
-          ? { userName: user.displayName, userEmail: user.email }
+          ? { userName: user.displayName, userEmail: user.email, userPhone: user.phone }
           : {}),
       };
     });
