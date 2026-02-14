@@ -24,6 +24,12 @@ export default function NewInstitutionPage() {
       footerText: "",
       institutionTagline: "",
     },
+    location: {
+      country: "",
+      state: "",
+      city: "",
+      timezone: "Asia/Kolkata",
+    },
     contactInfo: {
       supportEmail: "",
       phone: "",
@@ -56,7 +62,7 @@ export default function NewInstitutionPage() {
     setError(null);
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...form,
         domains: form.domains
           .split(",")
@@ -67,6 +73,11 @@ export default function NewInstitutionPage() {
           .map((d) => d.trim())
           .filter(Boolean),
       };
+
+      // Only include location if at least one field is filled
+      if (!form.location.country && !form.location.state && !form.location.city) {
+        delete payload.location;
+      }
 
       const res = await fetch("/api/institutions", {
         method: "POST",
@@ -169,6 +180,43 @@ export default function NewInstitutionPage() {
                 value={form.allowedEmailDomains}
                 onChange={(e) => updateField("allowedEmailDomains", e.target.value)}
                 placeholder="ifsjaipur.com, gmail.com"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Location */}
+        <section className="rounded-lg border border-[var(--border)] p-4">
+          <h2 className="font-semibold">Location</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium">Country</label>
+              <input
+                type="text"
+                value={form.location.country}
+                onChange={(e) => updateField("location.country", e.target.value)}
+                placeholder="India"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">State</label>
+              <input
+                type="text"
+                value={form.location.state}
+                onChange={(e) => updateField("location.state", e.target.value)}
+                placeholder="Rajasthan"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">City</label>
+              <input
+                type="text"
+                value={form.location.city}
+                onChange={(e) => updateField("location.city", e.target.value)}
+                placeholder="Jaipur"
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
               />
             </div>

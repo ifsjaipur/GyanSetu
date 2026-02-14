@@ -26,6 +26,12 @@ interface InstitutionDetail {
     maintenanceMode: boolean;
     locale: string;
   };
+  location?: {
+    country: string;
+    state: string;
+    city: string;
+    timezone: string;
+  };
   contactInfo: {
     supportEmail: string;
     phone: string;
@@ -72,6 +78,7 @@ export default function InstitutionEditPage() {
           branding: inst.branding,
           settings: inst.settings,
           contactInfo: inst.contactInfo,
+          location: inst.location,
         }),
       });
 
@@ -158,6 +165,58 @@ export default function InstitutionEditPage() {
                   <span className="text-xs text-[var(--muted-foreground)]">Preview</span>
                 </div>
               )}
+            </div>
+          </div>
+        </section>
+
+        {/* Location */}
+        <section className="rounded-lg border border-[var(--border)] p-4">
+          <h2 className="font-semibold">Location</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium">Country</label>
+              <input
+                type="text"
+                value={inst.location?.country || ""}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    location: { ...inst.location, country: e.target.value, state: inst.location?.state || "", city: inst.location?.city || "", timezone: inst.location?.timezone || "Asia/Kolkata" },
+                  })
+                }
+                placeholder="India"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">State</label>
+              <input
+                type="text"
+                value={inst.location?.state || ""}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    location: { ...inst.location, country: inst.location?.country || "", state: e.target.value, city: inst.location?.city || "", timezone: inst.location?.timezone || "Asia/Kolkata" },
+                  })
+                }
+                placeholder="Rajasthan"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">City</label>
+              <input
+                type="text"
+                value={inst.location?.city || ""}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    location: { ...inst.location, country: inst.location?.country || "", state: inst.location?.state || "", city: e.target.value, timezone: inst.location?.timezone || "Asia/Kolkata" },
+                  })
+                }
+                placeholder="Jaipur"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
             </div>
           </div>
         </section>
