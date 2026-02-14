@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInstitution } from "@/contexts/InstitutionContext";
@@ -102,7 +102,7 @@ export default function CompleteProfilePage() {
         };
       }
 
-      await updateDoc(doc(db, "users", firebaseUser.uid), updateData);
+      await setDoc(doc(db, "users", firebaseUser.uid), updateData, { merge: true });
 
       await refreshUser();
       // Domain users already have an institutionId — go to dashboard.

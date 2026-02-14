@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import PhoneInput from "@/components/PhoneInput";
@@ -84,7 +84,7 @@ export default function ProfileEditPage() {
         updateData.parentGuardian = null;
       }
 
-      await updateDoc(doc(db, "users", firebaseUser.uid), updateData);
+      await setDoc(doc(db, "users", firebaseUser.uid), updateData, { merge: true });
       await refreshUser();
       setMessage("Profile updated successfully");
     } catch (err) {
