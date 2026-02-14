@@ -52,13 +52,13 @@ async function setAdminRole(email: string) {
 
   // Get current user doc to find institutionId
   const userDoc = await db.collection("users").doc(uid).get();
-  if (!userDoc.exists) {
-    console.error(`User document not found in Firestore for ${uid}`);
-    process.exit(1);
-  }
+  let institutionId = "";
 
-  const userData = userDoc.data()!;
-  const institutionId = userData.institutionId || "";
+  if (userDoc.exists) {
+    institutionId = userDoc.data()!.institutionId || "";
+  } else {
+    console.log(`User document not found — creating one for ${email}`);
+  }
 
   // Update custom claims
   await auth.setCustomUserClaims(uid, {
@@ -67,11 +67,37 @@ async function setAdminRole(email: string) {
     activeInstitutionId: institutionId,
   });
 
-  // Update Firestore user doc
-  await db.collection("users").doc(uid).update({
-    role,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // Create or update Firestore user doc
+  if (userDoc.exists) {
+    await db.collection("users").doc(uid).update({
+      role,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } else {
+    await db.collection("users").doc(uid).set({
+      uid,
+      email,
+      displayName: user.displayName || "",
+      photoUrl: user.photoURL || null,
+      phone: user.phoneNumber || null,
+      institutionId,
+      activeInstitutionId: institutionId || null,
+      role,
+      isExternal: false,
+      consentGiven: false,
+      consentGivenAt: null,
+      profileComplete: false,
+      googleWorkspaceUserId: null,
+      address: null,
+      profile: { bio: null, dateOfBirth: null, enrollmentNumber: null, department: null },
+      parentGuardian: null,
+      preferences: { emailNotifications: true, language: "en" },
+      isActive: true,
+      lastLoginAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   console.log(`\nDone! ${email} (${uid}) is now super_admin`);
   console.log(`Institution: ${institutionId}`);
