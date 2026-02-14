@@ -31,6 +31,13 @@ interface VideoConfig {
   requireFullWatch: boolean;
 }
 
+interface LessonResource {
+  title: string;
+  url: string;
+  type: string;
+  driveFileId: string | null;
+}
+
 interface Lesson {
   id: string;
   title: string;
@@ -39,6 +46,7 @@ interface Lesson {
   estimatedMinutes: number;
   order: number;
   videoConfig?: VideoConfig | null;
+  resources?: LessonResource[];
 }
 
 interface Module {
@@ -549,6 +557,56 @@ export default function LearnPage() {
               <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-center">
                 <p className="text-[var(--muted-foreground)]">
                   No video configured for this lesson.
+                </p>
+              </div>
+            )}
+
+            {activeLesson.type === "resource" && activeLesson.resources && activeLesson.resources.length > 0 && (
+              <div className="space-y-4">
+                {activeLesson.resources.map((resource, idx) => (
+                  <div key={idx} className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+                    {/* Embed Drive documents inline */}
+                    {resource.driveFileId ? (
+                      <iframe
+                        src={`https://drive.google.com/file/d/${resource.driveFileId}/preview`}
+                        className="w-full border-0"
+                        style={{ height: "80vh" }}
+                        allow="autoplay"
+                        sandbox="allow-same-origin allow-scripts allow-popups"
+                        title={resource.title || `Document ${idx + 1}`}
+                      />
+                    ) : resource.url ? (
+                      <iframe
+                        src={resource.url}
+                        className="w-full border-0"
+                        style={{ height: "80vh" }}
+                        allow="autoplay"
+                        sandbox="allow-same-origin allow-scripts allow-popups"
+                        title={resource.title || `Document ${idx + 1}`}
+                      />
+                    ) : null}
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--border)]">
+                      <span className="text-sm font-medium">{resource.title || `Resource ${idx + 1}`}</span>
+                      <a
+                        href={resource.driveFileId
+                          ? `https://drive.google.com/file/d/${resource.driveFileId}/view`
+                          : resource.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[var(--brand-primary)] hover:underline"
+                      >
+                        Open in new tab &rarr;
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeLesson.type === "resource" && (!activeLesson.resources || activeLesson.resources.length === 0) && (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+                <p className="text-[var(--muted-foreground)]">
+                  No resources attached to this lesson.
                 </p>
               </div>
             )}
