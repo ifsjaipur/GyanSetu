@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { properCaseName, trimWhitespace } from "@/lib/utils/normalize";
+import { trimWhitespace } from "@/lib/utils/normalize";
+import LocationFields from "@/components/LocationFields";
 
 export default function NewInstitutionPage() {
   const router = useRouter();
@@ -12,8 +13,6 @@ export default function NewInstitutionPage() {
   const [form, setForm] = useState({
     name: "",
     slug: "",
-    primaryDomain: "",
-    domains: "",
     allowedEmailDomains: "",
     branding: {
       logoUrl: "",
@@ -65,13 +64,9 @@ export default function NewInstitutionPage() {
     try {
       const payload: Record<string, unknown> = {
         ...form,
-        domains: form.domains
-          .split(",")
-          .map((d) => d.trim())
-          .filter(Boolean),
         allowedEmailDomains: form.allowedEmailDomains
           .split(",")
-          .map((d) => d.trim())
+          .map((d) => d.trim().toLowerCase())
           .filter(Boolean),
       };
 
@@ -147,30 +142,6 @@ export default function NewInstitutionPage() {
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium">Primary Domain</label>
-              <input
-                type="text"
-                required
-                value={form.primaryDomain}
-                onChange={(e) => updateField("primaryDomain", e.target.value)}
-                placeholder="learn.example.com"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">
-                All Domains <span className="font-normal text-[var(--muted-foreground)]">(comma separated)</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={form.domains}
-                onChange={(e) => updateField("domains", e.target.value)}
-                placeholder="learn.example.com, example.com"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium">
                 Allowed Email Domains{" "}
@@ -181,9 +152,12 @@ export default function NewInstitutionPage() {
                 required
                 value={form.allowedEmailDomains}
                 onChange={(e) => updateField("allowedEmailDomains", e.target.value)}
-                placeholder="example.com, gmail.com"
+                placeholder="university.edu, college.ac.in"
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
               />
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                Users with these email domains are auto-assigned and eligible for instructor/admin roles.
+              </p>
             </div>
           </div>
         </section>
@@ -191,40 +165,21 @@ export default function NewInstitutionPage() {
         {/* Location */}
         <section className="rounded-lg border border-[var(--border)] p-4">
           <h2 className="font-semibold">Location</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="block text-sm font-medium">Country</label>
-              <input
-                type="text"
-                value={form.location.country}
-                onChange={(e) => updateField("location.country", e.target.value)}
-                onBlur={(e) => updateField("location.country", properCaseName(e.target.value))}
-                placeholder="India"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">State</label>
-              <input
-                type="text"
-                value={form.location.state}
-                onChange={(e) => updateField("location.state", e.target.value)}
-                onBlur={(e) => updateField("location.state", properCaseName(e.target.value))}
-                placeholder="Rajasthan"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">City</label>
-              <input
-                type="text"
-                value={form.location.city}
-                onChange={(e) => updateField("location.city", e.target.value)}
-                onBlur={(e) => updateField("location.city", properCaseName(e.target.value))}
-                placeholder="Jaipur"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
+          <div className="mt-4">
+            <LocationFields
+              value={form.location}
+              onChange={(loc) =>
+                setForm((prev) => ({
+                  ...prev,
+                  location: {
+                    country: loc.country,
+                    state: loc.state,
+                    city: loc.city,
+                    timezone: prev.location.timezone,
+                  },
+                }))
+              }
+            />
           </div>
         </section>
 

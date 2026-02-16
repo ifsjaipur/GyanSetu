@@ -8,7 +8,7 @@ interface InstitutionItem {
   id: string;
   name: string;
   slug: string;
-  primaryDomain: string;
+  allowedEmailDomains: string[];
   isActive: boolean;
   branding: { primaryColor: string };
 }
@@ -69,7 +69,7 @@ export default function InstitutionsListPage() {
                 <div>
                   <div className="font-medium">{inst.name}</div>
                   <div className="text-sm text-[var(--muted-foreground)]">
-                    {inst.primaryDomain} &middot; {inst.slug}
+                    {inst.slug}{inst.allowedEmailDomains?.length ? ` · ${inst.allowedEmailDomains.join(", ")}` : ""}
                   </div>
                 </div>
               </div>

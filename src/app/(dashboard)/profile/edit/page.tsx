@@ -191,18 +191,14 @@ export default function ProfileEditPage() {
         {/* Institution Info */}
         <div className="border-t border-[var(--border)] pt-4">
           <label className="block text-sm font-medium">Institution</label>
-          {institution ? (
+          {institution || userData?.institutionId ? (
             <div className="mt-1 rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm">
-              <span className="font-medium">{institution.name}</span>
+              <span className="font-medium">{institution?.name || userData?.institutionId}</span>
               {userData?.role && (
                 <span className="ml-2 text-xs text-[var(--muted-foreground)]">
                   ({userData.role.replace(/_/g, " ")})
                 </span>
               )}
-            </div>
-          ) : memberships.some((m) => m.status === "approved") ? (
-            <div className="mt-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-              Membership approved — sign out and back in to activate
             </div>
           ) : memberships.some((m) => m.status === "pending") ? (
             <div className="mt-1 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-700">

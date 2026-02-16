@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import LocationFields from "@/components/LocationFields";
 
 interface InstitutionDetail {
   id: string;
   name: string;
   slug: string;
-  domains: string[];
-  primaryDomain: string;
   allowedEmailDomains: string[];
   branding: {
     logoUrl: string;
@@ -49,11 +48,18 @@ export default function InstitutionEditPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Comma-separated string for editing allowedEmailDomains
+  const [domainsText, setDomainsText] = useState("");
+
   useEffect(() => {
     async function fetchInst() {
       try {
         const res = await fetch(`/api/institutions/${institutionId}`);
-        if (res.ok) setInst(await res.json());
+        if (res.ok) {
+          const data = await res.json();
+          setInst(data);
+          setDomainsText((data.allowedEmailDomains || []).join(", "));
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -69,12 +75,19 @@ export default function InstitutionEditPage() {
     setSaving(true);
     setMessage(null);
 
+    // Parse domains from comma-separated text
+    const allowedEmailDomains = domainsText
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+
     try {
       const res = await fetch(`/api/institutions/${institutionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: inst.name,
+          allowedEmailDomains,
           branding: inst.branding,
           settings: inst.settings,
           contactInfo: inst.contactInfo,
@@ -84,7 +97,6 @@ export default function InstitutionEditPage() {
 
       if (res.ok) {
         setMessage("Saved successfully");
-        // Apply branding colors immediately so the admin sees the change
         const root = document.documentElement;
         if (inst.branding.primaryColor) root.style.setProperty("--brand-primary", inst.branding.primaryColor);
         if (inst.branding.secondaryColor) root.style.setProperty("--brand-secondary", inst.branding.secondaryColor);
@@ -115,7 +127,7 @@ export default function InstitutionEditPage() {
 
       <h1 className="text-2xl font-bold">{inst.name}</h1>
       <p className="text-sm text-[var(--muted-foreground)]">
-        {inst.slug} &middot; {inst.primaryDomain}
+        {inst.slug}
       </p>
 
       {message && (
@@ -127,7 +139,7 @@ export default function InstitutionEditPage() {
       )}
 
       <div className="mt-6 space-y-6">
-        {/* Institution Name & Logo */}
+        {/* General */}
         <section className="rounded-lg border border-[var(--border)] p-4">
           <h2 className="font-semibold">General</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -156,6 +168,7 @@ export default function InstitutionEditPage() {
               />
               {inst.branding.logoUrl && (
                 <div className="mt-2 flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={inst.branding.logoUrl}
                     alt="Logo preview"
@@ -166,58 +179,48 @@ export default function InstitutionEditPage() {
                 </div>
               )}
             </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium">
+                Allowed Email Domains
+                <span className="ml-1 font-normal text-[var(--muted-foreground)]">(comma separated)</span>
+              </label>
+              <input
+                type="text"
+                value={domainsText}
+                onChange={(e) => setDomainsText(e.target.value)}
+                placeholder="example.com, university.edu"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                Users with these email domains are auto-assigned to this institution and eligible for instructor/admin roles.
+              </p>
+            </div>
           </div>
         </section>
 
         {/* Location */}
         <section className="rounded-lg border border-[var(--border)] p-4">
           <h2 className="font-semibold">Location</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="block text-sm font-medium">Country</label>
-              <input
-                type="text"
-                value={inst.location?.country || ""}
-                onChange={(e) =>
-                  setInst({
-                    ...inst,
-                    location: { ...inst.location, country: e.target.value, state: inst.location?.state || "", city: inst.location?.city || "", timezone: inst.location?.timezone || "Asia/Kolkata" },
-                  })
-                }
-                placeholder="India"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">State</label>
-              <input
-                type="text"
-                value={inst.location?.state || ""}
-                onChange={(e) =>
-                  setInst({
-                    ...inst,
-                    location: { ...inst.location, country: inst.location?.country || "", state: e.target.value, city: inst.location?.city || "", timezone: inst.location?.timezone || "Asia/Kolkata" },
-                  })
-                }
-                placeholder="Rajasthan"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">City</label>
-              <input
-                type="text"
-                value={inst.location?.city || ""}
-                onChange={(e) =>
-                  setInst({
-                    ...inst,
-                    location: { ...inst.location, country: inst.location?.country || "", state: inst.location?.state || "", city: e.target.value, timezone: inst.location?.timezone || "Asia/Kolkata" },
-                  })
-                }
-                placeholder="Jaipur"
-                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              />
-            </div>
+          <div className="mt-4">
+            <LocationFields
+              value={{
+                country: inst.location?.country || "",
+                state: inst.location?.state || "",
+                city: inst.location?.city || "",
+                timezone: inst.location?.timezone || "Asia/Kolkata",
+              }}
+              onChange={(loc) =>
+                setInst({
+                  ...inst,
+                  location: {
+                    country: loc.country,
+                    state: loc.state,
+                    city: loc.city,
+                    timezone: inst.location?.timezone || "Asia/Kolkata",
+                  },
+                })
+              }
+            />
           </div>
         </section>
 

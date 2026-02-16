@@ -37,8 +37,6 @@ export const createInstitutionSchema = z.object({
     .min(2)
     .max(30)
     .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
-  domains: z.array(z.string().min(3)).min(1),
-  primaryDomain: z.string().min(3),
   allowedEmailDomains: z.array(z.string().min(3)),
   location: institutionLocationSchema.optional(),
   branding: institutionBrandingSchema,
@@ -60,8 +58,6 @@ export const updateInstitutionSchema = z.object({
     .max(30)
     .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens")
     .optional(),
-  domains: z.array(z.string().min(3)).min(1).optional(),
-  primaryDomain: z.string().min(3).optional(),
   allowedEmailDomains: z.array(z.string().min(3)).optional(),
   branding: z.object({
     logoUrl: optionalUrl.optional(),

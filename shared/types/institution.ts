@@ -71,8 +71,6 @@ export interface Institution {
   id: string;
   name: string;
   slug: string;
-  domains: string[];
-  primaryDomain: string;
   allowedEmailDomains: string[];
   inviteCode: string;
   location: InstitutionLocation | null;

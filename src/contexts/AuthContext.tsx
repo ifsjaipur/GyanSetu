@@ -116,6 +116,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function refreshUser() {
     if (state.firebaseUser) {
+      // Force refresh the ID token to pick up any claim changes (e.g. after membership approval)
+      try {
+        const freshToken = await state.firebaseUser.getIdToken(true);
+        // Re-create session cookie with fresh claims
+        await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken: freshToken }),
+        });
+      } catch (err) {
+        console.warn("Token refresh failed (non-blocking):", err);
+      }
       await fetchUserData(state.firebaseUser);
     }
   }
