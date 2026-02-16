@@ -200,6 +200,10 @@ export default function ProfileEditPage() {
                 </span>
               )}
             </div>
+          ) : memberships.some((m) => m.status === "approved") ? (
+            <div className="mt-1 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+              Membership approved — sign out and back in to activate
+            </div>
           ) : memberships.some((m) => m.status === "pending") ? (
             <div className="mt-1 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-700">
               Membership request pending approval

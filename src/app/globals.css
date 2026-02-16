@@ -3,11 +3,11 @@
 
 :root {
   /* Institution branding — overridden dynamically by InstitutionContext.
-     Defaults are neutral gray to prevent theme flash before real colors load. */
-  --brand-primary: #374151;
-  --brand-secondary: #6b7280;
-  --brand-accent: #4b5563;
-  --brand-header-bg: #1f2937;
+     Defaults are blue so the platform looks professional before institution colors load. */
+  --brand-primary: #2563eb;
+  --brand-secondary: #1e40af;
+  --brand-accent: #3b82f6;
+  --brand-header-bg: #1e3a5f;
   --brand-text-on-primary: #ffffff;
 
   /* Layout */
