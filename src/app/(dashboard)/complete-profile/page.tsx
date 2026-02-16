@@ -1,18 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInstitution } from "@/contexts/InstitutionContext";
 import PhoneInput from "@/components/PhoneInput";
+import LocationFields from "@/components/LocationFields";
+import { findCountryCode, findStateCode } from "@/lib/data/location";
+import { detectUserLocation } from "@/lib/geo/detect";
+import { haversineDistanceKm } from "@/lib/geo/distance";
 import { properCaseName, trimWhitespace } from "@/lib/utils/normalize";
 
 interface BrowseInstitution {
   id: string;
   name: string;
-  location?: { city?: string; state?: string; country?: string };
+  location?: { city?: string; state?: string; country?: string; lat?: number | null; lng?: number | null };
   branding?: { institutionTagline?: string };
 }
 
@@ -33,7 +37,7 @@ export default function CompleteProfilePage() {
     address: {
       city: userData?.address?.city || "",
       state: userData?.address?.state || "",
-      country: userData?.address?.country || "India",
+      country: userData?.address?.country || "",
       pincode: userData?.address?.pincode || "",
     },
     consent: false,
@@ -48,6 +52,8 @@ export default function CompleteProfilePage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geoDetecting, setGeoDetecting] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // Fetch browseable institutions for users without an institution
   useEffect(() => {
@@ -63,6 +69,53 @@ export default function CompleteProfilePage() {
     }
     fetchInstitutions();
   }, [userData?.institutionId]);
+
+  // Auto-detect user location via IP geolocation
+  useEffect(() => {
+    const controller = new AbortController();
+    setGeoDetecting(true);
+
+    detectUserLocation(controller.signal).then((geo) => {
+      if (!geo) {
+        setGeoDetecting(false);
+        return;
+      }
+      setUserCoords({ lat: geo.latitude, lng: geo.longitude });
+
+      // Pre-fill address fields from detection (only empty fields)
+      setForm((f) => ({
+        ...f,
+        address: {
+          city: f.address.city || geo.city,
+          state: f.address.state || geo.state,
+          country: f.address.country || geo.country,
+          pincode: f.address.pincode || geo.postalCode,
+        },
+      }));
+      setGeoDetecting(false);
+    });
+
+    return () => controller.abort();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sort institutions by proximity to detected user location
+  const sortedInstitutions = useMemo(() => {
+    if (!userCoords || institutions.length === 0) return institutions;
+
+    return [...institutions].sort((a, b) => {
+      const aLat = a.location?.lat;
+      const aLng = a.location?.lng;
+      const bLat = b.location?.lat;
+      const bLng = b.location?.lng;
+
+      if (aLat == null || aLng == null) return 1;
+      if (bLat == null || bLng == null) return -1;
+
+      const distA = haversineDistanceKm(userCoords.lat, userCoords.lng, aLat, aLng);
+      const distB = haversineDistanceKm(userCoords.lat, userCoords.lng, bLat, bLng);
+      return distA - distB;
+    });
+  }, [institutions, userCoords]);
 
   // Redirect if profile already complete
   if (userData?.profileComplete) {
@@ -247,109 +300,62 @@ export default function CompleteProfilePage() {
 
           {/* Address Section */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium">Address *</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium" htmlFor="country">
-                  Country *
-                </label>
-                <input
-                  id="country"
-                  type="text"
-                  required
-                  value={form.address.country}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, country: e.target.value },
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, country: properCaseName(e.target.value) },
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-                  placeholder="Country"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium" htmlFor="state">
-                  State *
-                </label>
-                <input
-                  id="state"
-                  type="text"
-                  required
-                  value={form.address.state}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, state: e.target.value },
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, state: properCaseName(e.target.value) },
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-                  placeholder="State"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium" htmlFor="city">
-                  City *
-                </label>
-                <input
-                  id="city"
-                  type="text"
-                  required
-                  value={form.address.city}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, city: e.target.value },
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, city: properCaseName(e.target.value) },
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-                  placeholder="City"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium" htmlFor="pincode">
-                  Pincode *
-                </label>
-                <input
-                  id="pincode"
-                  type="text"
-                  required
-                  minLength={4}
-                  value={form.address.pincode}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, pincode: e.target.value },
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      address: { ...f.address, pincode: trimWhitespace(e.target.value) },
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-                  placeholder="Pincode"
-                />
-              </div>
+            <legend className="text-sm font-medium">
+              Address *
+              {geoDetecting && (
+                <span className="ml-2 text-xs font-normal text-[var(--muted-foreground)]">
+                  (Detecting your location...)
+                </span>
+              )}
+            </legend>
+            <LocationFields
+              value={{
+                country: form.address.country,
+                countryCode: findCountryCode(form.address.country),
+                state: form.address.state,
+                stateCode: findStateCode(
+                  findCountryCode(form.address.country),
+                  form.address.state
+                ),
+                city: form.address.city,
+              }}
+              onChange={(loc) =>
+                setForm((f) => ({
+                  ...f,
+                  address: {
+                    ...f.address,
+                    country: loc.country,
+                    state: loc.state,
+                    city: loc.city,
+                  },
+                }))
+              }
+            />
+            <div className="max-w-[200px]">
+              <label className="block text-sm font-medium" htmlFor="pincode">
+                Pincode *
+              </label>
+              <input
+                id="pincode"
+                type="text"
+                required
+                minLength={4}
+                value={form.address.pincode}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    address: { ...f.address, pincode: e.target.value },
+                  }))
+                }
+                onBlur={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    address: { ...f.address, pincode: trimWhitespace(e.target.value) },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                placeholder="Pincode"
+              />
             </div>
           </fieldset>
 
@@ -373,13 +379,21 @@ export default function CompleteProfilePage() {
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
               >
                 <option value="">Skip for now</option>
-                {institutions.map((inst) => (
-                  <option key={inst.id} value={inst.id}>
-                    {inst.name}
-                    {inst.location?.city ? ` — ${inst.location.city}` : ""}
-                    {inst.location?.state ? `, ${inst.location.state}` : ""}
-                  </option>
-                ))}
+                {sortedInstitutions.map((inst) => {
+                  const distance =
+                    userCoords && inst.location?.lat != null && inst.location?.lng != null
+                      ? haversineDistanceKm(userCoords.lat, userCoords.lng, inst.location.lat, inst.location.lng)
+                      : null;
+
+                  return (
+                    <option key={inst.id} value={inst.id}>
+                      {inst.name}
+                      {inst.location?.city ? ` — ${inst.location.city}` : ""}
+                      {inst.location?.state ? `, ${inst.location.state}` : ""}
+                      {distance != null ? ` (~${Math.round(distance)} km)` : ""}
+                    </option>
+                  );
+                })}
               </select>
 
               {selectedInstitutionId && (

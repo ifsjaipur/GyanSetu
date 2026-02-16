@@ -6,8 +6,10 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInstitution } from "@/contexts/InstitutionContext";
-import { properCaseName } from "@/lib/utils/normalize";
+import { properCaseName, trimWhitespace } from "@/lib/utils/normalize";
 import PhoneInput from "@/components/PhoneInput";
+import LocationFields from "@/components/LocationFields";
+import { findCountryCode, findStateCode } from "@/lib/data/location";
 import Link from "next/link";
 
 export default function ProfileEditPage() {
@@ -19,6 +21,12 @@ export default function ProfileEditPage() {
     displayName: "",
     phone: "",
     photoUrl: "",
+    address: {
+      city: "",
+      state: "",
+      country: "",
+      pincode: "",
+    },
   });
   const [showGuardian, setShowGuardian] = useState(false);
   const [guardianForm, setGuardianForm] = useState({
@@ -37,6 +45,12 @@ export default function ProfileEditPage() {
         displayName: userData.displayName || "",
         phone: userData.phone || "",
         photoUrl: userData.photoUrl || firebaseUser?.photoURL || "",
+        address: {
+          city: userData.address?.city || "",
+          state: userData.address?.state || "",
+          country: userData.address?.country || "",
+          pincode: userData.address?.pincode || "",
+        },
       });
       if (userData.parentGuardian) {
         setShowGuardian(true);
@@ -73,6 +87,12 @@ export default function ProfileEditPage() {
         displayName: form.displayName.trim(),
         phone: form.phone.trim(),
         photoUrl: form.photoUrl.trim() || null,
+        address: {
+          city: form.address.city.trim(),
+          state: form.address.state.trim(),
+          country: form.address.country.trim(),
+          pincode: form.address.pincode.trim(),
+        },
         updatedAt: serverTimestamp(),
       };
 
@@ -184,6 +204,55 @@ export default function ProfileEditPage() {
               required
               value={form.phone}
               onChange={(val) => setForm((f) => ({ ...f, phone: val }))}
+            />
+          </div>
+        </div>
+
+        {/* Address */}
+        <div className="border-t border-[var(--border)] pt-4">
+          <h3 className="mb-3 text-sm font-medium">Address</h3>
+          <LocationFields
+            value={{
+              country: form.address.country,
+              countryCode: findCountryCode(form.address.country),
+              state: form.address.state,
+              stateCode: findStateCode(
+                findCountryCode(form.address.country),
+                form.address.state
+              ),
+              city: form.address.city,
+            }}
+            onChange={(loc) =>
+              setForm((f) => ({
+                ...f,
+                address: {
+                  ...f.address,
+                  country: loc.country,
+                  state: loc.state,
+                  city: loc.city,
+                },
+              }))
+            }
+          />
+          <div className="mt-3 max-w-[200px]">
+            <label className="block text-sm font-medium">Pincode</label>
+            <input
+              type="text"
+              value={form.address.pincode}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  address: { ...f.address, pincode: e.target.value },
+                }))
+              }
+              onBlur={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  address: { ...f.address, pincode: trimWhitespace(e.target.value) },
+                }))
+              }
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              placeholder="Pincode"
             />
           </div>
         </div>

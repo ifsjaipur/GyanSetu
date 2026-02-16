@@ -14,7 +14,7 @@ interface LocationValue {
   state: string; // stored as state name
   stateCode?: string; // ISO code for dropdown
   city: string;
-  timezone: string;
+  timezone?: string;
 }
 
 interface LocationFieldsProps {
