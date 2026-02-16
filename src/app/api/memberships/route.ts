@@ -102,16 +102,10 @@ export async function GET(request: NextRequest) {
     }
 
     const snap = await query.limit(200).get();
-    const memberships = snap.docs
-      .map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }))
-      // Only show student memberships in admin views (filter out admin/instructor self-memberships)
-      .filter((m) => {
-        const memberRole = (m as unknown as { role?: string }).role;
-        return !memberRole || memberRole === "student";
-      });
+    const memberships = snap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     // Enrich with institution name
     const instIds = [
@@ -140,7 +134,7 @@ export async function GET(request: NextRequest) {
           .filter(Boolean)
       ),
     ];
-    const userMap = new Map<string, { displayName: string; email: string; phone: string | null }>();
+    const userMap = new Map<string, { displayName: string; email: string; phone: string | null; role: string }>();
     if (userIds.length > 0) {
       const userRefs = userIds.map((id) => db.collection("users").doc(id));
       const userDocs = await db.getAll(...userRefs);
@@ -151,6 +145,7 @@ export async function GET(request: NextRequest) {
             displayName: d.displayName || d.email || doc.id,
             email: d.email || "",
             phone: d.phone || null,
+            role: d.role || "student",
           });
         }
       });
@@ -162,6 +157,8 @@ export async function GET(request: NextRequest) {
       const user = userId ? userMap.get(userId) : undefined;
       return {
         ...m,
+        // Use the user doc's role as source of truth (membership doc may be stale)
+        role: user?.role || (m as unknown as { role?: string }).role || "student",
         institutionName: instMap.get(institutionId) || null,
         ...(user
           ? { userName: user.displayName, userEmail: user.email, userPhone: user.phone }

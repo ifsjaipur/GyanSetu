@@ -79,11 +79,27 @@ export async function PUT(
       institutionId: user.institutionId,
     });
 
-    // Update Firestore
+    // Update Firestore user doc
     await db.collection("users").doc(uid).update({
       role,
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    // Also update the membership subcollection doc so Admissions page reflects the role
+    if (user.institutionId) {
+      const membershipRef = db
+        .collection("users")
+        .doc(uid)
+        .collection("memberships")
+        .doc(user.institutionId);
+      const membershipDoc = await membershipRef.get();
+      if (membershipDoc.exists) {
+        await membershipRef.update({
+          role,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
 
     writeAuditLog({
       institutionId: user.institutionId,
