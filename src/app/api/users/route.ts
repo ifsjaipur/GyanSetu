@@ -61,6 +61,11 @@ export async function GET(request: NextRequest) {
       let query: FirebaseFirestore.Query = db.collection("users");
       query = query.where("role", "in", rolesList);
       snap = await query.limit(200).get();
+    } else if (caller.role === "super_admin" && roleParam === "student") {
+      // Super admin searching for students: show all students across all institutions
+      let query: FirebaseFirestore.Query = db.collection("users");
+      query = query.where("role", "==", "student");
+      snap = await query.limit(200).get();
     } else {
       let query: FirebaseFirestore.Query = db
         .collection("users")

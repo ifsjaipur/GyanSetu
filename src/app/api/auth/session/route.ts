@@ -187,15 +187,6 @@ export async function POST(request: NextRequest) {
       expiresIn: MAX_AGE,
     });
 
-    const cookieStore = await cookies();
-    cookieStore.set(COOKIE_NAME, sessionCookie, {
-      maxAge: MAX_AGE / 1000,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-    });
-
     // Ensure user doc exists (handles reset/missing doc scenarios)
     const authUser = await adminAuth.getUser(decoded.uid);
     await ensureUserDoc(
@@ -208,6 +199,26 @@ export async function POST(request: NextRequest) {
     // Read fresh role/institutionId from the user doc (not stale token claims)
     const freshUserDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
     const freshData = freshUserDoc.data();
+
+    const cookieStore = await cookies();
+    cookieStore.set(COOKIE_NAME, sessionCookie, {
+      maxAge: MAX_AGE / 1000,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
+
+    // Also set institution cookie for client-side access
+    if (freshData?.institutionId) {
+      cookieStore.set("__institution", freshData.institutionId, {
+        maxAge: MAX_AGE / 1000,
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+      });
+    }
 
     // Sync custom claims so next token refresh has correct data
     await adminAuth.setCustomUserClaims(decoded.uid, {

@@ -48,7 +48,9 @@ export default function NewCoursePage() {
   useEffect(() => {
     async function fetchInstructors() {
       try {
-        const res = await fetch("/api/users?role=instructor");
+        // For super_admin creating courses, show all instructors across all institutions
+        const query = userData?.role === "super_admin" ? "roles=instructor,institution_admin" : "role=instructor";
+        const res = await fetch(`/api/users?${query}`);
         if (res.ok) {
           const data = await res.json();
           setInstructors(data.users || []);
@@ -126,7 +128,14 @@ export default function NewCoursePage() {
         router.push(`/admin/courses/${data.id}`);
       } else {
         const data = await res.json();
-        setError(data.error || "Failed to create course");
+        if (data.details && Array.isArray(data.details)) {
+          const errors = data.details.map((e: { path: string[]; message: string }) =>
+            `${e.path.join(".")}: ${e.message}`
+          ).join("; ");
+          setError(errors);
+        } else {
+          setError(data.error || "Failed to create course");
+        }
       }
     } catch {
       setError("Network error");
@@ -154,7 +163,8 @@ export default function NewCoursePage() {
 
       {error && (
         <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
-          {error}
+          <div className="font-semibold">Validation failed</div>
+          <div className="mt-1 text-xs">{error}</div>
         </div>
       )}
 

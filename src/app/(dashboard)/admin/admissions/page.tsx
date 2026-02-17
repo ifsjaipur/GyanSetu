@@ -146,7 +146,15 @@ export default function AdminAdmissionsPage() {
       const res = await fetch("/api/memberships", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
-        setAdmissions(data.memberships || []);
+        // Deduplicate by userId+institutionId composite key
+        const seen = new Set<string>();
+        const deduplicated = (data.memberships || []).filter((m: AdmissionItem) => {
+          const key = `${m.userId}-${m.institutionId}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setAdmissions(deduplicated);
       }
     } catch (err) {
       console.error("Failed to fetch admissions:", err);
@@ -513,7 +521,7 @@ export default function AdminAdmissionsPage() {
               <tbody>
                 {paginatedAdmissions.map((admission) => (
                   <tr
-                    key={admission.userId}
+                    key={`${admission.userId}-${admission.institutionId}`}
                     className="border-b border-[var(--border)] transition-colors hover:bg-[var(--card)]"
                   >
                     {/* Student Name + Email + Phone */}

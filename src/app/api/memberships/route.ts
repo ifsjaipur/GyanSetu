@@ -148,20 +148,29 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const enriched = memberships.map((m) => {
-      const userId = (m as unknown as { userId: string }).userId;
-      const institutionId = (m as unknown as { institutionId: string }).institutionId;
-      const user = userId ? userMap.get(userId) : undefined;
-      return {
-        ...m,
-        // Use the user doc's role as source of truth (membership doc may be stale)
-        role: user?.role || (m as unknown as { role?: string }).role || "student",
-        institutionName: instMap.get(institutionId) || null,
-        ...(user
-          ? { userName: user.displayName, userEmail: user.email, userPhone: user.phone }
-          : {}),
-      };
-    });
+    const enriched = memberships
+      .map((m) => {
+        const userId = (m as unknown as { userId: string }).userId;
+        const institutionId = (m as unknown as { institutionId: string }).institutionId;
+        const user = userId ? userMap.get(userId) : undefined;
+
+        // Skip memberships for deleted users
+        if (!user && userId) {
+          console.warn(`Skipping membership for deleted user: ${userId}`);
+          return null;
+        }
+
+        return {
+          ...m,
+          // Use the user doc's role as source of truth (membership doc may be stale)
+          role: user?.role || (m as unknown as { role?: string }).role || "student",
+          institutionName: instMap.get(institutionId) || null,
+          ...(user
+            ? { userName: user.displayName, userEmail: user.email, userPhone: user.phone }
+            : {}),
+        };
+      })
+      .filter((m) => m !== null);
 
     const response = NextResponse.json({ memberships: enriched });
     response.headers.set(

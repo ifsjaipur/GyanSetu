@@ -17,22 +17,25 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
   // ─── Institution Resolution ────────────────────────────
-  // In production, this would look up the Host header against
-  // a cached domain→institutionId map from Firestore.
-  // For now, use the default institution from env.
+  // The __institution cookie is set by /api/auth/session based on user's institutionId.
+  // If not set (e.g., unauthenticated user), fall back to default.
   const institutionId =
-    process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
+    request.cookies.get("__institution")?.value ||
+    process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID ||
+    "ifs";
 
   response.headers.set("x-institution-id", institutionId);
 
-  // Also set as a cookie for client-side access
-  response.cookies.set("__institution", institutionId, {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24, // 1 day
-  });
+  // Set the cookie only if it doesn't exist (avoid overwriting user-specific institution)
+  if (!request.cookies.has("__institution")) {
+    response.cookies.set("__institution", institutionId, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24, // 1 day
+    });
+  }
 
   // ─── Auth Check ────────────────────────────────────────
   const sessionCookie = request.cookies.get(COOKIE_NAME)?.value;
