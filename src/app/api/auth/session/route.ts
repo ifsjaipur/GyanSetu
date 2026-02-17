@@ -209,6 +209,12 @@ export async function POST(request: NextRequest) {
     const freshUserDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
     const freshData = freshUserDoc.data();
 
+    // Sync custom claims so next token refresh has correct data
+    await adminAuth.setCustomUserClaims(decoded.uid, {
+      role: freshData?.role || "student",
+      institutionId: freshData?.institutionId || "",
+    });
+
     writeAuditLog({
       institutionId: freshData?.institutionId || "",
       userId: decoded.uid,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/zoom/reports
@@ -12,14 +13,13 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const allowedRoles = ["super_admin", "institution_admin"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     let query = db
       .collection("zoomMeetings")
-      .where("institutionId", "==", decoded.institutionId)
+      .where("institutionId", "==", caller.institutionId)
       .orderBy("startTime", "desc");
 
     if (from) {

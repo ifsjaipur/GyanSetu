@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { randomBytes } from "crypto";
 import { createInstitutionSchema } from "@shared/validators/institution.validator";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/institutions
@@ -10,25 +11,24 @@ import { createInstitutionSchema } from "@shared/validators/institution.validato
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
 
     const { searchParams } = request.nextUrl;
     const browse = searchParams.get("browse") === "true";
 
     let query;
-    if (decoded.role === "super_admin") {
+    if (caller.role === "super_admin") {
       query = db.collection("institutions");
     } else if (browse) {
       // Allow any authenticated user to browse active institutions (for joining)
       query = db.collection("institutions").where("isActive", "==", true);
-    } else if (decoded.institutionId) {
-      query = db.collection("institutions").where("__name__", "==", decoded.institutionId);
+    } else if (caller.institutionId) {
+      query = db.collection("institutions").where("__name__", "==", caller.institutionId);
     } else {
       // No institution yet — let them browse
       query = db.collection("institutions").where("isActive", "==", true);
@@ -54,13 +54,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-    if (decoded.role !== "super_admin") {
+    if (caller.role !== "super_admin") {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 

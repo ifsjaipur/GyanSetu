@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { updateCourseSchema } from "@shared/validators/course.validator";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/courses/:id
@@ -13,16 +14,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
-
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
 
     const courseDoc = await db.collection("courses").doc(id).get();
     if (!courseDoc.exists) {
@@ -31,28 +28,10 @@ export async function GET(
 
     const course = courseDoc.data()!;
 
-    // Check institution access — also resolve institutionId for new users
-    let userInstitutionId = decoded.institutionId;
-    if (!userInstitutionId) {
-      const userDoc = await db.collection("users").doc(decoded.uid).get();
-      if (userDoc.exists) userInstitutionId = userDoc.data()?.institutionId;
-    }
-    if (!userInstitutionId) {
-      const motherSnap = await db
-        .collection("institutions")
-        .where("institutionType", "==", "mother")
-        .where("isActive", "==", true)
-        .limit(1)
-        .get();
-      userInstitutionId = !motherSnap.empty
-        ? motherSnap.docs[0].id
-        : process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
-    }
-
     // Allow access if course belongs to user's institution OR its mother institution
-    let hasAccess = role === "super_admin" || course.institutionId === userInstitutionId;
-    if (!hasAccess && userInstitutionId) {
-      const userInstDoc = await db.collection("institutions").doc(userInstitutionId).get();
+    let hasAccess = caller.role === "super_admin" || course.institutionId === caller.institutionId;
+    if (!hasAccess) {
+      const userInstDoc = await db.collection("institutions").doc(caller.institutionId).get();
       const parentId = userInstDoc.exists ? userInstDoc.data()?.parentInstitutionId : null;
       if (parentId && course.institutionId === parentId) {
         hasAccess = true;
@@ -63,7 +42,7 @@ export async function GET(
     }
 
     // Students can only see published courses
-    if (role === "student" && course.status !== "published") {
+    if (caller.role === "student" && course.status !== "published") {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
@@ -116,12 +95,11 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
     const courseRef = db.collection("courses").doc(id);
@@ -133,13 +111,13 @@ export async function PUT(
     const course = courseDoc.data()!;
 
     // Permission check
-    const isSuperAdmin = decoded.role === "super_admin";
+    const isSuperAdmin = caller.role === "super_admin";
     const isInstitutionAdmin =
-      decoded.role === "institution_admin" && course.institutionId === decoded.institutionId;
+      caller.role === "institution_admin" && course.institutionId === caller.institutionId;
     const isAssignedInstructor =
-      decoded.role === "instructor" &&
-      course.institutionId === decoded.institutionId &&
-      course.instructorIds?.includes(decoded.uid);
+      caller.role === "instructor" &&
+      course.institutionId === caller.institutionId &&
+      course.instructorIds?.includes(caller.uid);
 
     if (!isSuperAdmin && !isInstitutionAdmin && !isAssignedInstructor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -148,7 +126,7 @@ export async function PUT(
     const body = await request.json();
 
     // Prevent instructors from removing themselves from the course
-    if (isAssignedInstructor && body.instructorIds && !body.instructorIds.includes(decoded.uid)) {
+    if (isAssignedInstructor && body.instructorIds && !body.instructorIds.includes(caller.uid)) {
       return NextResponse.json(
         { error: "Cannot remove yourself from the course" },
         { status: 400 }
@@ -185,14 +163,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -205,8 +182,8 @@ export async function DELETE(
     }
 
     if (
-      decoded.role !== "super_admin" &&
-      courseDoc.data()!.institutionId !== decoded.institutionId
+      caller.role !== "super_admin" &&
+      courseDoc.data()!.institutionId !== caller.institutionId
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

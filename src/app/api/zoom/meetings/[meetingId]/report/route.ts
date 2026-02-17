@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 import { getZoomCredentials } from "@/lib/zoom/config";
 import { getZoomMeetingReport } from "@/lib/zoom/client";
 
@@ -14,14 +15,13 @@ export async function GET(
 ) {
   try {
     const { meetingId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -32,7 +32,7 @@ export async function GET(
     }
 
     const meetingData = meetingDoc.data()!;
-    if (decoded.role !== "super_admin" && meetingData.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && meetingData.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

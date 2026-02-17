@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 import { FieldValue } from "firebase-admin/firestore";
 import { copyDriveFile, exportAsPdf, uploadToDrive, setPublicViewAccess } from "@/lib/google/drive";
 import { mergeDocTemplate } from "@/lib/google/docs";
@@ -14,14 +15,13 @@ import { writeAuditLog } from "@/lib/audit-log";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const enrollment = enrollDoc.data()!;
-    if (decoded.role !== "super_admin" && enrollment.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && enrollment.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -174,9 +174,9 @@ export async function POST(request: NextRequest) {
 
     writeAuditLog({
       institutionId: enrollment.institutionId,
-      userId: decoded.uid,
-      userEmail: decoded.email || "",
-      userRole: decoded.role,
+      userId: caller.uid,
+      userEmail: caller.email,
+      userRole: caller.role,
       action: "certificate.generate",
       resource: "certificate",
       resourceId: certificateId,

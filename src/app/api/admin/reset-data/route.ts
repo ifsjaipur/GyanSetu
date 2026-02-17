@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 // Allow up to 60s for this heavy operation (Vercel Hobby max)
 export const maxDuration = 60;
@@ -226,16 +227,13 @@ async function deleteAllZoomMeetings(db: FirebaseFirestore.Firestore): Promise<n
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-    if (decoded.role !== "super_admin") {
+    if (caller.role !== "super_admin") {
       return NextResponse.json({ error: "Forbidden — super admin only" }, { status: 403 });
     }
-
     const body = await request.json();
     if (body.confirmPhrase !== "DELETE ALL DATA") {
       return NextResponse.json(
@@ -268,7 +266,7 @@ export async function POST(request: NextRequest) {
           break;
 
         case "users":
-          counts.users = await deleteAllUsers(db, auth, decoded.uid);
+          counts.users = await deleteAllUsers(db, auth, caller.uid);
           break;
 
         case "courses":
@@ -298,11 +296,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Always ensure admin role is preserved after any reset
-    const adminRef = db.collection("users").doc(decoded.uid);
+    const adminRef = db.collection("users").doc(caller.uid);
     const adminDoc = await adminRef.get();
 
     if (validCategories.includes("institutions") || validCategories.includes("users")) {
-      await auth.setCustomUserClaims(decoded.uid, {
+      await auth.setCustomUserClaims(caller.uid, {
         role: "super_admin",
         institutionId: "",
         activeInstitutionId: "",
@@ -322,7 +320,7 @@ export async function POST(request: NextRequest) {
       counts,
       deletedCategories: validCategories,
       preserved: {
-        adminUser: decoded.uid,
+        adminUser: caller.uid,
       },
     });
   } catch (err) {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { updateInstitutionSchema } from "@shared/validators/institution.validator";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/institutions/:id
@@ -13,14 +14,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
-
-    if (decoded.role !== "super_admin" && decoded.institutionId !== id) {
+    if (caller.role !== "super_admin" && caller.institutionId !== id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -49,15 +48,14 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-    const isSuperAdmin = decoded.role === "super_admin";
+    const isSuperAdmin = caller.role === "super_admin";
     const isOwnAdmin =
-      decoded.role === "institution_admin" && decoded.institutionId === id;
+      caller.role === "institution_admin" && caller.institutionId === id;
 
     if (!isSuperAdmin && !isOwnAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

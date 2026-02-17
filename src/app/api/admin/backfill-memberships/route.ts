@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/admin/backfill-memberships
@@ -10,22 +11,20 @@ import { FieldValue } from "firebase-admin/firestore";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const db = getAdminDb();
 
     // Resolve institutionId
-    let institutionId = decoded.institutionId;
-    if (decoded.role === "super_admin") {
+    let institutionId = caller.institutionId;
+    if (caller.role === "super_admin") {
       const body = await request.json().catch(() => ({}));
       if (body.institutionId) {
         institutionId = body.institutionId;
@@ -67,7 +66,7 @@ export async function POST(request: NextRequest) {
           joinMethod: "email_domain",
           requestedAt: FieldValue.serverTimestamp(),
           reviewedAt: FieldValue.serverTimestamp(),
-          reviewedBy: decoded.uid,
+          reviewedBy: caller.uid,
           reviewNote: "Bulk backfill by admin",
           transferredTo: null,
           createdAt: FieldValue.serverTimestamp(),

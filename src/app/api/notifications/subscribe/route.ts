@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/notifications/subscribe
@@ -8,12 +9,11 @@ import { FieldValue } from "firebase-admin/firestore";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const { subscription } = await request.json();
 
     if (!subscription?.endpoint) {
@@ -21,10 +21,10 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getAdminDb();
-    await db.collection("pushSubscriptions").doc(decoded.uid).set(
+    await db.collection("pushSubscriptions").doc(caller.uid).set(
       {
-        userId: decoded.uid,
-        institutionId: decoded.institutionId || "",
+        userId: caller.uid,
+        institutionId: caller.institutionId,
         subscriptions: FieldValue.arrayUnion(subscription),
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -44,12 +44,11 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const { endpoint } = await request.json();
 
     if (!endpoint) {
@@ -57,7 +56,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const db = getAdminDb();
-    const docRef = db.collection("pushSubscriptions").doc(decoded.uid);
+    const docRef = db.collection("pushSubscriptions").doc(caller.uid);
     const doc = await docRef.get();
 
     if (doc.exists) {

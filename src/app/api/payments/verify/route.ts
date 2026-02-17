@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { verifyPaymentSignature } from "@/lib/razorpay/verify";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/payments/verify
@@ -13,12 +14,11 @@ import { writeAuditLog } from "@/lib/audit-log";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const body = await request.json();
 
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature, paymentId } = body;
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const payment = paymentDoc.data()!;
 
     // Verify this payment belongs to the user
-    if (payment.userId !== decoded.uid) {
+    if (payment.userId !== caller.uid) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const enrollmentRef = db.collection("enrollments").doc();
     await enrollmentRef.set({
       id: enrollmentRef.id,
-      userId: decoded.uid,
+      userId: caller.uid,
       courseId: payment.courseId,
       institutionId: payment.institutionId,
       status: "active",
@@ -111,9 +111,9 @@ export async function POST(request: NextRequest) {
 
     writeAuditLog({
       institutionId: payment.institutionId,
-      userId: decoded.uid,
-      userEmail: decoded.email || "",
-      userRole: decoded.role || "student",
+      userId: caller.uid,
+      userEmail: caller.email,
+      userRole: caller.role,
       action: "payment.verified",
       resource: "payment",
       resourceId: paymentId,

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { recordCheckpointResponseSchema } from "@shared/validators/enrollment.validator";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/video-progress/:lessonId/checkpoint
@@ -13,12 +14,10 @@ export async function POST(
 ) {
   try {
     const { lessonId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const body = await request.json();
     const parsed = recordCheckpointResponseSchema.safeParse(body);
 
@@ -31,7 +30,7 @@ export async function POST(
 
     const { checkpointId, selectedOptionId, textAnswer } = parsed.data;
     const db = getAdminDb();
-    const docId = `${decoded.uid}_${lessonId}`;
+    const docId = `${caller.uid}_${lessonId}`;
     const docRef = db.collection("videoProgress").doc(docId);
     const existing = await docRef.get();
 
@@ -49,13 +48,11 @@ export async function POST(
       });
     } else {
       // Create skeleton doc
-      const institutionId = decoded.institutionId ||
-        (await db.collection("users").doc(decoded.uid).get()).data()?.institutionId ||
-        process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
+      const institutionId = caller.institutionId;
 
       await docRef.set({
         id: docId,
-        userId: decoded.uid,
+        userId: caller.uid,
         courseId: body.courseId || "",
         moduleId: body.moduleId || "",
         lessonId,

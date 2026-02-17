@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 import { FieldValue } from "firebase-admin/firestore";
 
 /**
@@ -9,17 +10,13 @@ import { FieldValue } from "firebase-admin/firestore";
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
     const { searchParams } = request.nextUrl;
-
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
 
     const courseId = searchParams.get("courseId");
     if (!courseId) {
@@ -31,7 +28,7 @@ export async function GET(request: NextRequest) {
       .where("courseId", "==", courseId);
 
     // Students only see published exams
-    if (role === "student") {
+    if (caller.role === "student") {
       query = query.where("status", "==", "published");
     }
 
@@ -39,11 +36,11 @@ export async function GET(request: NextRequest) {
     const exams = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
     // For students, also fetch their attempts
-    if (role === "student") {
+    if (caller.role === "student") {
       const attemptsSnap = await db
         .collection("examAttempts")
         .where("courseId", "==", courseId)
-        .where("userId", "==", decoded.uid)
+        .where("userId", "==", caller.uid)
         .get();
 
       const attempts = attemptsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -64,14 +61,13 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -90,11 +86,11 @@ export async function POST(request: NextRequest) {
     }
 
     const course = courseDoc.data()!;
-    if (decoded.role !== "super_admin" && course.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && course.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (decoded.role === "instructor" && !course.instructorIds?.includes(decoded.uid)) {
+    if (caller.role === "instructor" && !course.instructorIds?.includes(caller.uid)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -116,7 +112,7 @@ export async function POST(request: NextRequest) {
       moduleId: moduleId || null,
       order: order || 0,
       status: "draft" as const,
-      createdBy: decoded.uid,
+      createdBy: caller.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };

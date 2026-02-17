@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/enrollments
@@ -8,35 +9,22 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
     const { searchParams } = request.nextUrl;
 
-    let institutionId = decoded.institutionId;
-    if (!institutionId) {
-      const userDoc = await db.collection("users").doc(decoded.uid).get();
-      if (userDoc.exists) institutionId = userDoc.data()?.institutionId;
-    }
-    if (!institutionId) {
-      institutionId = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
-    }
-
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
-
     let query = db
       .collection("enrollments")
-      .where("institutionId", "==", institutionId);
+      .where("institutionId", "==", caller.institutionId);
 
     // Students only see their own enrollments; ?mine=true forces own-only for any role
     const mineOnly = searchParams.get("mine") === "true";
-    if (role === "student" || mineOnly) {
-      query = query.where("userId", "==", decoded.uid);
+    if (caller.role === "student" || mineOnly) {
+      query = query.where("userId", "==", caller.uid);
     } else {
       const userIdFilter = searchParams.get("userId");
       if (userIdFilter) {

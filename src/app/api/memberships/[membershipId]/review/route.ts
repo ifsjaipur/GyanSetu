@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { reviewMembershipSchema } from "@shared/validators/membership.validator";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * PUT /api/memberships/:membershipId/review
@@ -19,14 +20,13 @@ export async function PUT(
 ) {
   try {
     const { membershipId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -44,10 +44,10 @@ export async function PUT(
     const { userId, action, note, transferToInstitutionId } = parsed.data;
 
     // Determine which institution's membership to review
-    // For institution_admin: use their own institutionId from decoded claims
+    // For institution_admin: use their own institutionId from caller context
     // For super_admin: use institutionId from query param or body
     let institutionId: string;
-    if (decoded.role === "super_admin") {
+    if (caller.role === "super_admin") {
       const { searchParams } = request.nextUrl;
       institutionId =
         searchParams.get("institutionId") ||
@@ -61,7 +61,7 @@ export async function PUT(
       }
     } else {
       // institution_admin
-      institutionId = decoded.institutionId;
+      institutionId = caller.institutionId;
       if (!institutionId) {
         return NextResponse.json(
           { error: "No institution assigned" },
@@ -89,8 +89,8 @@ export async function PUT(
 
     // Verify the admin belongs to the same institution (unless super_admin)
     if (
-      decoded.role === "institution_admin" &&
-      membership.institutionId !== decoded.institutionId
+      caller.role === "institution_admin" &&
+      membership.institutionId !== caller.institutionId
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -100,7 +100,7 @@ export async function PUT(
       await membershipRef.update({
         status: "approved",
         reviewedAt: FieldValue.serverTimestamp(),
-        reviewedBy: decoded.uid,
+        reviewedBy: caller.uid,
         reviewNote: note || null,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -164,9 +164,9 @@ export async function PUT(
       writeAuditLog(
         {
           institutionId,
-          userId: decoded.uid,
-          userEmail: decoded.email || "",
-          userRole: decoded.role,
+          userId: caller.uid,
+          userEmail: caller.email,
+          userRole: caller.role,
           action: "membership.approve",
           resource: "membership",
           resourceId: `${userId}/${institutionId}`,
@@ -189,7 +189,7 @@ export async function PUT(
       await membershipRef.update({
         status: "rejected",
         reviewedAt: FieldValue.serverTimestamp(),
-        reviewedBy: decoded.uid,
+        reviewedBy: caller.uid,
         reviewNote: note || null,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -197,9 +197,9 @@ export async function PUT(
       writeAuditLog(
         {
           institutionId,
-          userId: decoded.uid,
-          userEmail: decoded.email || "",
-          userRole: decoded.role,
+          userId: caller.uid,
+          userEmail: caller.email,
+          userRole: caller.role,
           action: "membership.reject",
           resource: "membership",
           resourceId: `${userId}/${institutionId}`,
@@ -249,7 +249,7 @@ export async function PUT(
         status: "transferred",
         transferredTo: transferToInstitutionId,
         reviewedAt: FieldValue.serverTimestamp(),
-        reviewedBy: decoded.uid,
+        reviewedBy: caller.uid,
         reviewNote: note || null,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -282,9 +282,9 @@ export async function PUT(
       writeAuditLog(
         {
           institutionId,
-          userId: decoded.uid,
-          userEmail: decoded.email || "",
-          userRole: decoded.role,
+          userId: caller.uid,
+          userEmail: caller.email,
+          userRole: caller.role,
           action: "membership.transfer",
           resource: "membership",
           resourceId: `${userId}/${institutionId}`,

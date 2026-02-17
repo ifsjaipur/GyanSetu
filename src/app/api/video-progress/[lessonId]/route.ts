@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { updateVideoProgressSchema } from "@shared/validators/enrollment.validator";
 import { z } from "zod/v4";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 const putBodySchema = updateVideoProgressSchema.extend({
   moduleId: z.string().min(1),
@@ -19,15 +20,14 @@ export async function GET(
 ) {
   try {
     const { lessonId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
 
-    const docId = `${decoded.uid}_${lessonId}`;
+    const docId = `${caller.uid}_${lessonId}`;
     const doc = await db.collection("videoProgress").doc(docId).get();
 
     if (!doc.exists) {
@@ -51,12 +51,11 @@ export async function PUT(
 ) {
   try {
     const { lessonId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const body = await request.json();
     const parsed = putBodySchema.safeParse(body);
 
@@ -69,13 +68,11 @@ export async function PUT(
 
     const data = parsed.data;
     const db = getAdminDb();
-    const docId = `${decoded.uid}_${lessonId}`;
+    const docId = `${caller.uid}_${lessonId}`;
     const docRef = db.collection("videoProgress").doc(docId);
     const existing = await docRef.get();
 
-    const institutionId = decoded.institutionId ||
-      (await db.collection("users").doc(decoded.uid).get()).data()?.institutionId ||
-      process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
+    const institutionId = caller.institutionId;
 
     if (existing.exists) {
       await docRef.update({
@@ -90,7 +87,7 @@ export async function PUT(
     } else {
       await docRef.set({
         id: docId,
-        userId: decoded.uid,
+        userId: caller.uid,
         courseId: data.courseId,
         moduleId: data.moduleId,
         lessonId,

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/memberships/assign
@@ -11,18 +12,12 @@ import { writeAuditLog } from "@/lib/audit-log";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
-
-    // Read caller's role from Firestore (not stale token claims)
-    const callerDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
-    const callerRole = callerDoc.data()?.role || "student";
-
-    if (callerRole !== "super_admin" && callerRole !== "institution_admin") {
+    if (caller.role !== "super_admin" && caller.role !== "institution_admin") {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
@@ -81,8 +76,8 @@ export async function POST(request: NextRequest) {
       joinMethod: "admin_added",
       requestedAt: FieldValue.serverTimestamp(),
       reviewedAt: FieldValue.serverTimestamp(),
-      reviewedBy: decoded.uid,
-      reviewNote: `Assigned by ${callerRole}`,
+      reviewedBy: caller.uid,
+      reviewNote: `Assigned by ${caller.role}`,
       transferredTo: null,
       createdAt: existingMembership.exists
         ? existingMembership.data()?.createdAt || FieldValue.serverTimestamp()
@@ -92,9 +87,9 @@ export async function POST(request: NextRequest) {
 
     writeAuditLog({
       institutionId,
-      userId: decoded.uid,
-      userEmail: decoded.email || "",
-      userRole: callerRole,
+      userId: caller.uid,
+      userEmail: caller.email,
+      userRole: caller.role,
       action: "membership.assign",
       resource: "membership",
       resourceId: `${userId}/${institutionId}`,

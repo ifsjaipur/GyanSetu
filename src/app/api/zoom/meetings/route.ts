@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 import { getZoomCredentials } from "@/lib/zoom/config";
 import { createZoomMeeting, addZoomRegistrant } from "@/lib/zoom/client";
 import { FieldValue } from "firebase-admin/firestore";
@@ -11,14 +12,13 @@ import { createZoomMeetingSchema } from "@shared/validators/zoom.validator";
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     let query = db
       .collection("zoomMeetings")
-      .where("institutionId", "==", decoded.institutionId)
+      .where("institutionId", "==", caller.institutionId)
       .orderBy("startTime", "desc")
       .limit(limit);
 
@@ -53,14 +53,13 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getAdminDb();
-    const instDoc = await db.collection("institutions").doc(decoded.institutionId).get();
+    const instDoc = await db.collection("institutions").doc(caller.institutionId).get();
     if (!instDoc.exists) {
       return NextResponse.json({ error: "Institution not found" }, { status: 404 });
     }
@@ -93,7 +92,7 @@ export async function POST(request: NextRequest) {
       id: meetingRef.id,
       zoomMeetingId: meeting.id,
       zoomMeetingUuid: meeting.uuid,
-      institutionId: decoded.institutionId,
+      institutionId: caller.institutionId,
       courseId: parsed.data.courseId || null,
       sessionId: parsed.data.sessionId || null,
       topic: meeting.topic,
@@ -110,7 +109,7 @@ export async function POST(request: NextRequest) {
       participantCount: 0,
       registrantCount: 0,
       liveParticipantCount: 0,
-      createdBy: decoded.uid,
+      createdBy: caller.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };

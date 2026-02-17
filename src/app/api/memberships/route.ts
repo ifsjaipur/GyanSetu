@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { requestMembershipSchema } from "@shared/validators/membership.validator";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/memberships
@@ -13,26 +14,22 @@ import { requestMembershipSchema } from "@shared/validators/membership.validator
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
     const { searchParams } = request.nextUrl;
 
     const statusFilter = searchParams.get("status");
     const institutionIdFilter = searchParams.get("institutionId");
 
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
-
     // --- Student view: own memberships subcollection ---
-    if (role === "student") {
+    if (caller.role === "student") {
       const snap = await db
         .collection("users")
-        .doc(decoded.uid)
+        .doc(caller.uid)
         .collection("memberships")
         .get();
 
@@ -77,9 +74,9 @@ export async function GET(request: NextRequest) {
     // --- Admin views: collection group query ---
     let query = db.collectionGroup("memberships") as FirebaseFirestore.Query;
 
-    if (role === "institution_admin") {
+    if (caller.role === "institution_admin") {
       // Institution admins see only their institution's memberships
-      const adminInstitutionId = decoded.institutionId;
+      const adminInstitutionId = caller.institutionId;
       if (!adminInstitutionId) {
         return NextResponse.json(
           { error: "No institution assigned" },
@@ -87,7 +84,7 @@ export async function GET(request: NextRequest) {
         );
       }
       query = query.where("institutionId", "==", adminInstitutionId);
-    } else if (role === "super_admin") {
+    } else if (caller.role === "super_admin") {
       // Super admins can optionally filter by institutionId
       if (institutionIdFilter) {
         query = query.where("institutionId", "==", institutionIdFilter);
@@ -185,12 +182,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
     const body = await request.json();
@@ -239,7 +235,7 @@ export async function POST(request: NextRequest) {
     // Check for existing pending or approved membership (prevent duplicates)
     const existingDoc = await db
       .collection("users")
-      .doc(decoded.uid)
+      .doc(caller.uid)
       .collection("memberships")
       .doc(institutionId)
       .get();
@@ -263,7 +259,7 @@ export async function POST(request: NextRequest) {
     // Create membership document
     const membershipData = {
       id: institutionId,
-      userId: decoded.uid,
+      userId: caller.uid,
       institutionId,
       role: "student",
       status: "pending",
@@ -280,7 +276,7 @@ export async function POST(request: NextRequest) {
 
     await db
       .collection("users")
-      .doc(decoded.uid)
+      .doc(caller.uid)
       .collection("memberships")
       .doc(institutionId)
       .set(membershipData);

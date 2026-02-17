@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { UserRole, ROLE_HIERARCHY } from "@shared/enums/roles";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * PUT /api/users/:uid/role
@@ -15,14 +16,13 @@ export async function PUT(
 ) {
   try {
     const { uid } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -32,7 +32,7 @@ export async function PUT(
     }
 
     // Institution admins cannot assign super_admin
-    if (decoded.role === "institution_admin" && role === UserRole.SUPER_ADMIN) {
+    if (caller.role === "institution_admin" && role === UserRole.SUPER_ADMIN) {
       return NextResponse.json({ error: "Cannot assign super_admin" }, { status: 403 });
     }
 
@@ -45,7 +45,7 @@ export async function PUT(
     const user = userDoc.data()!;
 
     // Check institution match for non-super admins
-    if (decoded.role !== "super_admin" && user.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && user.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -103,9 +103,9 @@ export async function PUT(
 
     writeAuditLog({
       institutionId: user.institutionId,
-      userId: decoded.uid,
-      userEmail: decoded.email || "",
-      userRole: decoded.role,
+      userId: caller.uid,
+      userEmail: caller.email,
+      userRole: caller.role,
       action: "user.role_change",
       resource: "user",
       resourceId: uid,

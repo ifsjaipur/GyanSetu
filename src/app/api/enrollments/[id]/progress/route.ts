@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 import { FieldValue } from "firebase-admin/firestore";
 
 /**
@@ -16,12 +17,11 @@ export async function POST(
 ) {
   try {
     const { id: enrollmentId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
     // Verify enrollment exists and belongs to user
@@ -33,7 +33,7 @@ export async function POST(
     }
 
     const enrollment = enrollmentDoc.data()!;
-    if (enrollment.userId !== decoded.uid) {
+    if (enrollment.userId !== caller.uid) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -154,12 +154,11 @@ export async function GET(
 ) {
   try {
     const { id: enrollmentId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
 
     const enrollmentDoc = await db.collection("enrollments").doc(enrollmentId).get();
@@ -170,11 +169,9 @@ export async function GET(
     const enrollment = enrollmentDoc.data()!;
 
     // Students can only view their own; admins/instructors can view any in institution
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
-    if (enrollment.userId !== decoded.uid) {
-      const isAdminOrInstructor = ["super_admin", "institution_admin", "instructor"].includes(role);
-      if (!isAdminOrInstructor || (role !== "super_admin" && enrollment.institutionId !== decoded.institutionId)) {
+    if (enrollment.userId !== caller.uid) {
+      const isAdminOrInstructor = ["super_admin", "institution_admin", "instructor"].includes(caller.role);
+      if (!isAdminOrInstructor || (caller.role !== "super_admin" && enrollment.institutionId !== caller.institutionId)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }

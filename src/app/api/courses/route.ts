@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createCourseSchema } from "@shared/validators/course.validator";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/courses
@@ -10,48 +11,23 @@ import { writeAuditLog } from "@/lib/audit-log";
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
     const { searchParams } = request.nextUrl;
 
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
-
-    // Resolve institutionId: from claims, query param, user doc, or default
-    let institutionId = role === "super_admin"
-      ? searchParams.get("institutionId") || decoded.institutionId
-      : decoded.institutionId;
-
-    // Fallback: look up from user doc if claims haven't propagated yet
-    if (!institutionId) {
-      const userDoc = await db.collection("users").doc(decoded.uid).get();
-      if (userDoc.exists) {
-        institutionId = userDoc.data()?.institutionId;
-      }
-    }
-
-    // Last resort: find the mother institution
-    if (!institutionId) {
-      const motherSnap = await db
-        .collection("institutions")
-        .where("institutionType", "==", "mother")
-        .where("isActive", "==", true)
-        .limit(1)
-        .get();
-      institutionId = !motherSnap.empty
-        ? motherSnap.docs[0].id
-        : process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
-    }
+    // For super_admin, allow overriding institutionId via query param
+    const institutionId = caller.role === "super_admin"
+      ? searchParams.get("institutionId") || caller.institutionId
+      : caller.institutionId;
 
     // Build list of institution IDs to query
     // Students/instructors see their institution's courses + mother institution's courses
     const institutionIds = [institutionId];
-    if (role === "student" || role === "instructor") {
+    if (caller.role === "student" || caller.role === "instructor") {
       const instDoc = await db.collection("institutions").doc(institutionId).get();
       const instData = instDoc.exists ? instDoc.data() : null;
       if (instData?.parentInstitutionId) {
@@ -64,12 +40,12 @@ export async function GET(request: NextRequest) {
     // Firestore doesn't allow combining "in" with "array-contains" in one query,
     // so for instructors we run separate queries per institution
     let courses;
-    if (role === "instructor") {
+    if (caller.role === "instructor") {
       const promises = institutionIds.map(async (instId) => {
         let q = db
           .collection("courses")
           .where("institutionId", "==", instId)
-          .where("instructorIds", "array-contains", decoded.uid);
+          .where("instructorIds", "array-contains", caller.uid);
         if (typeFilter) q = q.where("type", "==", typeFilter);
         const s = await q.get();
         return s.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -80,7 +56,7 @@ export async function GET(request: NextRequest) {
         .collection("courses")
         .where("institutionId", "in", institutionIds);
 
-      if (role === "student") {
+      if (caller.role === "student") {
         query = query.where("status", "==", "published");
       }
       if (typeFilter) {
@@ -135,14 +111,13 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
@@ -158,21 +133,10 @@ export async function POST(request: NextRequest) {
     const data = parsed.data;
     const db = getAdminDb();
 
-    // Super admins can specify an institutionId in the body; others use their claims
-    let institutionId = decoded.institutionId;
-    if (decoded.role === "super_admin" && body.institutionId) {
-      institutionId = body.institutionId;
-    }
-
-    // Fallback: look up from user doc
-    if (!institutionId) {
-      const userDoc = await db.collection("users").doc(decoded.uid).get();
-      institutionId = userDoc.data()?.institutionId || userDoc.data()?.activeInstitutionId;
-    }
-
-    if (!institutionId) {
-      return NextResponse.json({ error: "No institution assigned" }, { status: 400 });
-    }
+    // Super admins can specify an institutionId in the body; others use their Firestore value
+    const institutionId = caller.role === "super_admin" && body.institutionId
+      ? body.institutionId
+      : caller.institutionId;
 
     // Check slug uniqueness within institution
     const existing = await db
@@ -206,7 +170,7 @@ export async function POST(request: NextRequest) {
       status: "draft" as const,
       isVisible: false,
       enrollmentCount: 0,
-      createdBy: decoded.uid,
+      createdBy: caller.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -215,9 +179,9 @@ export async function POST(request: NextRequest) {
 
     writeAuditLog({
       institutionId,
-      userId: decoded.uid,
-      userEmail: decoded.email || "",
-      userRole: decoded.role,
+      userId: caller.uid,
+      userEmail: caller.email,
+      userRole: caller.role,
       action: "course.create",
       resource: "course",
       resourceId: courseRef.id,

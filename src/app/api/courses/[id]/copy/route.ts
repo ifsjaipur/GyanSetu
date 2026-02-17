@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit-log";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/courses/:id/copy
@@ -15,14 +16,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -47,8 +47,8 @@ export async function POST(
 
     // Permission check: must be admin of source institution or super_admin
     if (
-      decoded.role === "institution_admin" &&
-      course.institutionId !== decoded.institutionId
+      caller.role === "institution_admin" &&
+      course.institutionId !== caller.institutionId
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -96,7 +96,7 @@ export async function POST(
       classroomInviteLink: null,
       enrollmentCount: 0,
       copiedFrom: { courseId: id, institutionId: course.institutionId },
-      createdBy: decoded.uid,
+      createdBy: caller.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -180,9 +180,9 @@ export async function POST(
     writeAuditLog(
       {
         institutionId: targetInstitutionId,
-        userId: decoded.uid,
-        userEmail: decoded.email || "",
-        userRole: decoded.role,
+        userId: caller.uid,
+        userEmail: caller.email,
+        userRole: caller.role,
         action: "course.copy",
         resource: "course",
         resourceId: newCourseRef.id,

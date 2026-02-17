@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createMeetSession, deleteCalendarEvent } from "@/lib/google/calendar";
 import { getServiceAccountCredentials } from "@/lib/google/auth-client";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * GET /api/courses/:id/sessions
@@ -14,12 +15,11 @@ export async function GET(
 ) {
   try {
     const { id: courseId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
 
     const courseDoc = await db.collection("courses").doc(courseId).get();
@@ -28,7 +28,7 @@ export async function GET(
     }
 
     const course = courseDoc.data()!;
-    if (decoded.role !== "super_admin" && course.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && course.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -61,14 +61,13 @@ export async function POST(
 ) {
   try {
     const { id: courseId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -79,11 +78,11 @@ export async function POST(
     }
 
     const course = courseDoc.data()!;
-    if (decoded.role !== "super_admin" && course.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && course.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (decoded.role === "instructor" && !course.instructorIds?.includes(decoded.uid)) {
+    if (caller.role === "instructor" && !course.instructorIds?.includes(caller.uid)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -257,7 +256,7 @@ export async function POST(
       zoomMeetingId,
       zoomMeetingUuid,
       attendeeCount: attendeeEmails.length,
-      createdBy: decoded.uid,
+      createdBy: caller.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -296,14 +295,13 @@ export async function DELETE(
 ) {
   try {
     const { id: courseId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -321,11 +319,11 @@ export async function DELETE(
     }
 
     const course = courseDoc.data()!;
-    if (decoded.role !== "super_admin" && course.institutionId !== decoded.institutionId) {
+    if (caller.role !== "super_admin" && course.institutionId !== caller.institutionId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (decoded.role === "instructor" && !course.instructorIds?.includes(decoded.uid)) {
+    if (caller.role === "instructor" && !course.instructorIds?.includes(caller.uid)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

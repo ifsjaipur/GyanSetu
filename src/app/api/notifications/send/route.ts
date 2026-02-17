@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { sendPushNotification } from "@/lib/notifications/push";
 import { sendWhatsAppMessage } from "@/lib/notifications/whatsapp";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/notifications/send
@@ -19,14 +20,12 @@ import { sendWhatsAppMessage } from "@/lib/notifications/whatsapp";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -38,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getAdminDb();
-    const institutionId = decoded.institutionId || "";
+    const institutionId = caller.institutionId;
 
     // Resolve target user IDs
     let targetUserIds: string[] = userIds || [];

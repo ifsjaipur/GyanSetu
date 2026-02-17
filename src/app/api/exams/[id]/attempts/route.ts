@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 import { FieldValue } from "firebase-admin/firestore";
 
 /**
@@ -13,21 +14,17 @@ export async function GET(
 ) {
   try {
     const { id: examId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, false);
     const db = getAdminDb();
-
-    // Treat missing role as student (claims may not have propagated yet for new users)
-    const role = decoded.role || "student";
 
     let query = db.collection("examAttempts").where("examId", "==", examId);
 
-    if (role === "student") {
-      query = query.where("userId", "==", decoded.uid);
+    if (caller.role === "student") {
+      query = query.where("userId", "==", caller.uid);
     }
 
     const snap = await query.orderBy("createdAt", "desc").get();
@@ -52,12 +49,11 @@ export async function POST(
 ) {
   try {
     const { id: examId } = await params;
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const db = getAdminDb();
 
     const examDoc = await db.collection("exams").doc(examId).get();
@@ -78,7 +74,7 @@ export async function POST(
       const enrollSnap = await db
         .collection("enrollments")
         .where("courseId", "==", exam.courseId)
-        .where("userId", "==", decoded.uid)
+        .where("userId", "==", caller.uid)
         .where("status", "==", "active")
         .limit(1)
         .get();
@@ -91,7 +87,7 @@ export async function POST(
       const existingAttempts = await db
         .collection("examAttempts")
         .where("examId", "==", examId)
-        .where("userId", "==", decoded.uid)
+        .where("userId", "==", caller.uid)
         .get();
 
       if (existingAttempts.size >= exam.maxAttempts) {
@@ -114,7 +110,7 @@ export async function POST(
         id: attemptRef.id,
         examId,
         courseId: exam.courseId,
-        userId: decoded.uid,
+        userId: caller.uid,
         institutionId: exam.institutionId,
         attemptNumber: existingAttempts.size + 1,
         status: "in_progress" as const,
@@ -155,7 +151,7 @@ export async function POST(
       }
 
       const attempt = attemptDoc.data()!;
-      if (attempt.userId !== decoded.uid) {
+      if (attempt.userId !== caller.uid) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -192,14 +188,13 @@ export async function PUT(
 ) {
   try {
     await params; // consume params
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const allowedRoles = ["super_admin", "institution_admin", "instructor"];
-    if (!allowedRoles.includes(decoded.role)) {
+    if (!allowedRoles.includes(caller.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -236,7 +231,7 @@ export async function PUT(
       percentageScore,
       passed,
       status: "graded",
-      evaluatorId: decoded.uid,
+      evaluatorId: caller.uid,
       feedback: feedback || null,
       gradedAt: FieldValue.serverTimestamp(),
     });

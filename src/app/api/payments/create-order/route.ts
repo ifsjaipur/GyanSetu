@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { getRazorpayClient } from "@/lib/razorpay/client";
 import { FieldValue } from "firebase-admin/firestore";
+import { getCallerContext } from "@/lib/auth/get-caller-context";
 
 /**
  * POST /api/payments/create-order
@@ -10,12 +11,10 @@ import { FieldValue } from "firebase-admin/firestore";
  */
 export async function POST(request: NextRequest) {
   try {
-    const sessionCookie = request.cookies.get("__session")?.value;
-    if (!sessionCookie) {
+    const caller = await getCallerContext(request.cookies.get("__session")?.value);
+    if (!caller) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
-
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
     const { courseId } = await request.json();
 
     if (!courseId) {
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (courseType === "instructor_led") {
       const membershipDoc = await db
         .collection("users")
-        .doc(decoded.uid)
+        .doc(caller.uid)
         .collection("memberships")
         .doc(course.institutionId)
         .get();
@@ -56,7 +55,7 @@ export async function POST(request: NextRequest) {
     // Check if already enrolled
     const existingEnrollment = await db
       .collection("enrollments")
-      .where("userId", "==", decoded.uid)
+      .where("userId", "==", caller.uid)
       .where("courseId", "==", courseId)
       .where("status", "in", ["active", "pending_payment"])
       .limit(1)
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest) {
       const enrollmentRef = db.collection("enrollments").doc();
       await enrollmentRef.set({
         id: enrollmentRef.id,
-        userId: decoded.uid,
+        userId: caller.uid,
         courseId,
         institutionId: course.institutionId,
         status: "active",
@@ -116,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     // Paid course — create Razorpay order
     const razorpay = getRazorpayClient();
-    const receiptNumber = `rcpt_${Date.now()}_${decoded.uid.slice(0, 6)}`;
+    const receiptNumber = `rcpt_${Date.now()}_${caller.uid.slice(0, 6)}`;
 
     const order = await razorpay.orders.create({
       amount: course.pricing.amount,
@@ -124,7 +123,7 @@ export async function POST(request: NextRequest) {
       receipt: receiptNumber,
       notes: {
         courseId,
-        userId: decoded.uid,
+        userId: caller.uid,
         institutionId: course.institutionId,
       },
     });
@@ -133,7 +132,7 @@ export async function POST(request: NextRequest) {
     const paymentRef = db.collection("payments").doc();
     await paymentRef.set({
       id: paymentRef.id,
-      userId: decoded.uid,
+      userId: caller.uid,
       courseId,
       institutionId: course.institutionId,
       enrollmentId: null,
