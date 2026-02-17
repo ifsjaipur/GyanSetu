@@ -22,9 +22,9 @@ export const institutionContactInfoSchema = z.object({
 });
 
 export const institutionLocationSchema = z.object({
-  country: z.string().min(2).max(100),
-  state: z.string().min(2).max(100),
-  city: z.string().min(2).max(100),
+  country: z.string().max(100),
+  state: z.string().max(100),
+  city: z.string().max(100),
   lat: z.number().min(-90).max(90).nullable().optional(),
   lng: z.number().min(-180).max(180).nullable().optional(),
   timezone: z.string().max(50).default("Asia/Kolkata"),

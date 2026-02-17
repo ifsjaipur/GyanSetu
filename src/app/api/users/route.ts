@@ -27,49 +27,77 @@ export async function GET(request: NextRequest) {
     const roleParam = searchParams.get("role");
     const rolesParam = searchParams.get("roles");
 
+    const db = getAdminDb();
+
+    // Read caller's role from Firestore (token claims may be stale)
+    const callerDoc = await db.collection("users").doc(decoded.uid).get();
+    const callerData = callerDoc.data();
+    const callerRole = callerData?.role || decoded.role || "student";
+
     // Instructors can only fetch the instructor list
-    if (decoded.role === "instructor") {
+    if (callerRole === "instructor") {
       if (roleParam !== "instructor") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-    } else if (!["super_admin", "institution_admin"].includes(decoded.role)) {
+    } else if (!["super_admin", "institution_admin"].includes(callerRole)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const db = getAdminDb();
     let institutionId =
-      decoded.role === "super_admin"
-        ? searchParams.get("institutionId") || decoded.institutionId
-        : decoded.institutionId;
+      callerRole === "super_admin"
+        ? searchParams.get("institutionId") || callerData?.institutionId || decoded.institutionId
+        : callerData?.institutionId || decoded.institutionId;
 
-    if (!institutionId) {
-      const userDoc = await db.collection("users").doc(decoded.uid).get();
-      if (userDoc.exists) institutionId = userDoc.data()?.institutionId;
-    }
     if (!institutionId) {
       institutionId = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
     }
 
-    let query: FirebaseFirestore.Query = db
-      .collection("users")
-      .where("institutionId", "==", institutionId);
-
-    // Apply role filters
+    // Build role filter
+    let rolesList: string[] = [];
     if (rolesParam) {
-      const rolesList = rolesParam.split(",").filter((r) => VALID_ROLES.includes(r));
+      rolesList = rolesParam.split(",").filter((r) => VALID_ROLES.includes(r));
+    } else if (roleParam && VALID_ROLES.includes(roleParam)) {
+      rolesList = [roleParam];
+    }
+
+    const isMentorQuery = rolesList.length > 0 &&
+      rolesList.every((r) => r !== "student");
+
+    let snap: FirebaseFirestore.QuerySnapshot;
+
+    if (isMentorQuery && callerRole === "super_admin") {
+      // Super admin: show all mentors across all institutions
+      let query: FirebaseFirestore.Query = db.collection("users");
+      query = query.where("role", "in", rolesList);
+      snap = await query.limit(200).get();
+    } else {
+      let query: FirebaseFirestore.Query = db
+        .collection("users")
+        .where("institutionId", "==", institutionId);
       if (rolesList.length > 0) {
         query = query.where("role", "in", rolesList);
       }
-    } else if (roleParam && VALID_ROLES.includes(roleParam)) {
-      query = query.where("role", "==", roleParam);
+      snap = await query.limit(200).get();
     }
 
-    const snap = await query.limit(200).get();
-
-    const users = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Enrich with memberships for mentor queries
+    const enrichWithMemberships = isMentorQuery;
+    const users = await Promise.all(
+      snap.docs.map(async (doc) => {
+        const data = { id: doc.id, ...doc.data() };
+        if (enrichWithMemberships) {
+          const membershipsSnap = await db
+            .collection("users")
+            .doc(doc.id)
+            .collection("memberships")
+            .where("status", "==", "approved")
+            .get();
+          const institutions = membershipsSnap.docs.map((m) => m.data().institutionId);
+          return { ...data, institutions };
+        }
+        return data;
+      })
+    );
 
     return NextResponse.json({ users });
   } catch (err) {

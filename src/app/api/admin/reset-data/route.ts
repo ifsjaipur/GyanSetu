@@ -297,19 +297,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Reset admin user's claims (clear institutionId since institutions may be deleted)
-    if (validCategories.includes("institutions")) {
+    // Always ensure admin role is preserved after any reset
+    const adminRef = db.collection("users").doc(decoded.uid);
+    const adminDoc = await adminRef.get();
+
+    if (validCategories.includes("institutions") || validCategories.includes("users")) {
       await auth.setCustomUserClaims(decoded.uid, {
         role: "super_admin",
         institutionId: "",
         activeInstitutionId: "",
       });
 
-      // Also clear institutionId on admin's user doc
-      const adminRef = db.collection("users").doc(decoded.uid);
-      const adminDoc = await adminRef.get();
       if (adminDoc.exists) {
         await adminRef.update({
+          role: "super_admin",
           institutionId: "",
           activeInstitutionId: "",
         });

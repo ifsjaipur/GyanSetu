@@ -3,6 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
+interface InstitutionItem {
+  id: string;
+  name: string;
+  institutionType: string;
+  isActive: boolean;
+}
+
 interface UserItem {
   uid: string;
   id?: string;
@@ -14,6 +21,7 @@ interface UserItem {
   profileComplete: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
+  institutions?: string[];
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -38,6 +46,10 @@ export default function AdminMentorsPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [showAddSection, setShowAddSection] = useState(false);
 
+  // Institutions list for assign action
+  const [institutions, setInstitutions] = useState<InstitutionItem[]>([]);
+  const [assigningUid, setAssigningUid] = useState<string | null>(null);
+
   const fetchMentors = useCallback(async () => {
     try {
       const res = await fetch(
@@ -54,9 +66,22 @@ export default function AdminMentorsPage() {
     }
   }, []);
 
+  const fetchInstitutions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/institutions");
+      if (res.ok) {
+        const data = await res.json();
+        setInstitutions(data.institutions || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch institutions:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMentors();
-  }, [fetchMentors]);
+    fetchInstitutions();
+  }, [fetchMentors, fetchInstitutions]);
 
   async function handleRoleChange(uid: string, newRole: string) {
     setUpdatingUid(uid);
@@ -140,10 +165,47 @@ export default function AdminMentorsPage() {
     }
   }
 
+  async function handleAssignInstitution(uid: string, institutionId: string) {
+    if (!institutionId) return;
+    setAssigningUid(uid);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/memberships/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid, institutionId }),
+      });
+      if (res.ok) {
+        setMessage({ text: "Assigned to institution successfully", type: "success" });
+        // Update local state — add institution to the user's list
+        setUsers((prev) =>
+          prev.map((u) => {
+            if ((u.uid || u.id) === uid) {
+              const existing = u.institutions || [];
+              return { ...u, institutions: [...existing, institutionId] };
+            }
+            return u;
+          })
+        );
+      } else {
+        const data = await res.json();
+        setMessage({ text: data.error || "Failed to assign", type: "error" });
+      }
+    } catch (err) {
+      console.error("Failed to assign institution:", err);
+      setMessage({ text: "Failed to assign institution", type: "error" });
+    } finally {
+      setAssigningUid(null);
+    }
+  }
+
   const isSuperAdmin = userData?.role === "super_admin";
   const availableRoles = isSuperAdmin
     ? MENTOR_ROLES
     : MENTOR_ROLES.filter((r) => r !== "super_admin");
+
+  // Build institution name map for display
+  const instNameMap = new Map(institutions.map((i) => [i.id, i.name]));
 
   // Search filter
   const filteredUsers = users.filter((u) => {
@@ -313,6 +375,7 @@ export default function AdminMentorsPage() {
               <tr className="border-b border-[var(--border)] text-left text-[var(--muted-foreground)]">
                 <th className="pb-3 pr-4 font-medium">Name</th>
                 <th className="pb-3 pr-4 font-medium">Role</th>
+                <th className="pb-3 pr-4 font-medium">Institutions</th>
                 <th className="pb-3 pr-4 font-medium">Type</th>
                 <th className="pb-3 pr-4 font-medium">Status</th>
                 <th className="pb-3 font-medium">Actions</th>
@@ -347,6 +410,22 @@ export default function AdminMentorsPage() {
                       </span>
                     </td>
                     <td className="py-3 pr-4">
+                      <div className="flex flex-wrap gap-1">
+                        {(user.institutions || []).map((instId) => (
+                          <span
+                            key={instId}
+                            className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                            title={instId}
+                          >
+                            {instNameMap.get(instId) || instId}
+                          </span>
+                        ))}
+                        {(!user.institutions || user.institutions.length === 0) && (
+                          <span className="text-xs text-[var(--muted-foreground)]">None</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4">
                       {user.isExternal ? (
                         <span className="text-xs text-orange-600">External</span>
                       ) : (
@@ -363,21 +442,40 @@ export default function AdminMentorsPage() {
                       </span>
                     </td>
                     <td className="py-3">
-                      <select
-                        value={user.role}
-                        onChange={(e) =>
-                          handleRoleChange(uid, e.target.value)
-                        }
-                        disabled={updatingUid === uid}
-                        className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs disabled:opacity-50"
-                      >
-                        {availableRoles.map((role) => (
-                          <option key={role} value={role}>
-                            {role.replace(/_/g, " ")}
-                          </option>
-                        ))}
-                        <option value="student">student (demote)</option>
-                      </select>
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={user.role}
+                          onChange={(e) =>
+                            handleRoleChange(uid, e.target.value)
+                          }
+                          disabled={updatingUid === uid}
+                          className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs disabled:opacity-50"
+                        >
+                          {availableRoles.map((role) => (
+                            <option key={role} value={role}>
+                              {role.replace(/_/g, " ")}
+                            </option>
+                          ))}
+                          <option value="student">student (demote)</option>
+                        </select>
+                        {isSuperAdmin && (
+                          <select
+                            value=""
+                            onChange={(e) => handleAssignInstitution(uid, e.target.value)}
+                            disabled={assigningUid === uid}
+                            className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs disabled:opacity-50"
+                          >
+                            <option value="">Assign to institution...</option>
+                            {institutions
+                              .filter((inst) => inst.isActive && !(user.institutions || []).includes(inst.id))
+                              .map((inst) => (
+                                <option key={inst.id} value={inst.id}>
+                                  {inst.name}
+                                </option>
+                              ))}
+                          </select>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

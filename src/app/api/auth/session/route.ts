@@ -7,54 +7,85 @@ import { writeAuditLog } from "@/lib/audit-log";
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || "__session";
 const MAX_AGE = parseInt(process.env.SESSION_COOKIE_MAX_AGE || "432000") * 1000; // ms
 
+const GENERIC_DOMAINS = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com", "protonmail.com"];
+
+/** Helper to create an approved membership doc */
+async function createMembership(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  institutionId: string,
+  role: string,
+  joinMethod: string,
+) {
+  await db
+    .collection("users")
+    .doc(uid)
+    .collection("memberships")
+    .doc(institutionId)
+    .set({
+      id: institutionId,
+      userId: uid,
+      institutionId,
+      role,
+      status: "approved",
+      isExternal: false,
+      joinMethod,
+      requestedAt: FieldValue.serverTimestamp(),
+      reviewedAt: FieldValue.serverTimestamp(),
+      reviewedBy: null,
+      reviewNote: null,
+      transferredTo: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+}
+
 /**
  * Ensure a Firestore user document exists for this user.
- * Handles the case where Auth user exists but Firestore doc was deleted
- * (e.g. after a data reset) or Cloud Function hasn't run yet.
+ * - ALL users auto-enroll in the Global (mother) institution
+ * - Org-domain users also match to specific institutions with role "instructor"
+ * - Generic email users get role "student"
  */
-async function ensureUserDoc(uid: string, email: string, displayName: string, photoURL: string | null, role: string, institutionId: string) {
+async function ensureUserDoc(uid: string, email: string, displayName: string, photoURL: string | null) {
   const db = getAdminDb();
   const userRef = db.collection("users").doc(uid);
   const userDoc = await userRef.get();
 
   if (!userDoc.exists) {
     const emailDomain = email.split("@")[1];
-    let matchedInstitutionId = institutionId || "";
+    const isGenericEmail = GENERIC_DOMAINS.includes(emailDomain.toLowerCase());
 
-    // Generic email providers should NOT auto-assign to an institution
-    // even if they are in allowedEmailDomains (those users must choose explicitly)
-    const genericDomains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com", "protonmail.com"];
-    const isGenericEmail = genericDomains.includes(emailDomain.toLowerCase());
+    // 1. Always find the Global (mother) institution — every user gets enrolled here
+    let motherInstitutionId = "";
+    const motherSnap = await db
+      .collection("institutions")
+      .where("institutionType", "==", "mother")
+      .where("isActive", "==", true)
+      .limit(1)
+      .get();
+    if (!motherSnap.empty) {
+      motherInstitutionId = motherSnap.docs[0].id;
+    }
 
-    // If no institutionId in claims, try to find one by email domain (org-specific only)
-    if (!matchedInstitutionId && !isGenericEmail) {
+    // 2. Domain match — org email users get matched to a specific institution
+    let domainMatchedId = "";
+    if (!isGenericEmail) {
       const institutionsSnap = await db.collection("institutions").get();
       for (const doc of institutionsSnap.docs) {
         const inst = doc.data();
         if (inst.isActive && inst.allowedEmailDomains?.includes(emailDomain)) {
-          matchedInstitutionId = doc.id;
+          domainMatchedId = doc.id;
           break;
         }
       }
     }
 
-    // If still no institution matched, auto-assign to the mother institution
-    // Every user is at minimum a member of the mother institute
-    let motherInstitutionId = "";
-    if (!matchedInstitutionId) {
-      const motherSnap = await db
-        .collection("institutions")
-        .where("institutionType", "==", "mother")
-        .where("isActive", "==", true)
-        .limit(1)
-        .get();
-      if (!motherSnap.empty) {
-        motherInstitutionId = motherSnap.docs[0].id;
-        matchedInstitutionId = motherInstitutionId;
-      }
-    }
-
-    const isExternal = !matchedInstitutionId;
+    // 3. Determine role and primary institution
+    const isDomainUser = !!domainMatchedId;
+    const userRole = isDomainUser ? "instructor" : "student";
+    // Domain users: primary = matched institution; others: primary = Global
+    const primaryInstitutionId = domainMatchedId || motherInstitutionId;
+    const isExternal = !primaryInstitutionId;
 
     await userRef.set({
       uid,
@@ -63,9 +94,9 @@ async function ensureUserDoc(uid: string, email: string, displayName: string, ph
       photoUrl: photoURL || null,
       phone: null,
       gender: null,
-      institutionId: matchedInstitutionId,
-      activeInstitutionId: matchedInstitutionId || null,
-      role: role || "student",
+      institutionId: primaryInstitutionId,
+      activeInstitutionId: primaryInstitutionId || null,
+      role: userRole,
       isExternal,
       consentGiven: false,
       consentGivenAt: null,
@@ -89,64 +120,47 @@ async function ensureUserDoc(uid: string, email: string, displayName: string, ph
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Create approved membership if institution matched
-    if (matchedInstitutionId) {
-      await db
-        .collection("users")
-        .doc(uid)
-        .collection("memberships")
-        .doc(matchedInstitutionId)
-        .set({
-          id: matchedInstitutionId,
-          userId: uid,
-          institutionId: matchedInstitutionId,
-          role: role || "student",
-          status: "approved",
-          isExternal: false,
-          joinMethod: "email_domain",
-          requestedAt: FieldValue.serverTimestamp(),
-          reviewedAt: FieldValue.serverTimestamp(),
-          reviewedBy: null,
-          reviewNote: null,
-          transferredTo: null,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+    // 4. Create memberships
+    // Always enroll in Global if it exists
+    if (motherInstitutionId) {
+      await createMembership(db, uid, motherInstitutionId, userRole, "auto_global");
+    }
+    // Domain users also get membership in their matched institution
+    if (domainMatchedId && domainMatchedId !== motherInstitutionId) {
+      await createMembership(db, uid, domainMatchedId, "instructor", "email_domain");
     }
 
-    console.log(`Created missing user doc for ${email} (${uid})`);
+    console.log(`Created user doc for ${email} (${uid}), role=${userRole}, primary=${primaryInstitutionId}`);
   } else {
-    // Update lastLoginAt on existing doc
+    // Existing user — read role from Firestore (not stale token claims)
+    const existingData = userDoc.data()!;
     await userRef.update({ lastLoginAt: FieldValue.serverTimestamp() });
 
-    // Backfill missing membership doc for users who have institutionId but no membership
-    const existingData = userDoc.data()!;
+    // Backfill missing Global membership
+    const motherSnap = await db
+      .collection("institutions")
+      .where("institutionType", "==", "mother")
+      .where("isActive", "==", true)
+      .limit(1)
+      .get();
+    if (!motherSnap.empty) {
+      const motherId = motherSnap.docs[0].id;
+      const globalMemberRef = db.collection("users").doc(uid).collection("memberships").doc(motherId);
+      const globalMemberDoc = await globalMemberRef.get();
+      if (!globalMemberDoc.exists) {
+        await createMembership(db, uid, motherId, existingData.role || "student", "auto_global");
+        console.log(`Backfilled Global membership for ${email}`);
+      }
+    }
+
+    // Backfill missing primary institution membership
     const userInstitutionId = existingData.institutionId;
     if (userInstitutionId) {
-      const membershipRef = db
-        .collection("users")
-        .doc(uid)
-        .collection("memberships")
-        .doc(userInstitutionId);
+      const membershipRef = db.collection("users").doc(uid).collection("memberships").doc(userInstitutionId);
       const membershipDoc = await membershipRef.get();
       if (!membershipDoc.exists) {
-        await membershipRef.set({
-          id: userInstitutionId,
-          userId: uid,
-          institutionId: userInstitutionId,
-          role: existingData.role || "student",
-          status: "approved",
-          isExternal: existingData.isExternal ?? false,
-          joinMethod: "email_domain",
-          requestedAt: FieldValue.serverTimestamp(),
-          reviewedAt: FieldValue.serverTimestamp(),
-          reviewedBy: null,
-          reviewNote: "Auto-backfilled",
-          transferredTo: null,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        console.log(`Backfilled missing membership for ${email} in ${userInstitutionId}`);
+        await createMembership(db, uid, userInstitutionId, existingData.role || "student", "email_domain");
+        console.log(`Backfilled membership for ${email} in ${userInstitutionId}`);
       }
     }
   }
@@ -189,15 +203,17 @@ export async function POST(request: NextRequest) {
       decoded.email || "",
       authUser.displayName || decoded.name || "",
       authUser.photoURL || null,
-      decoded.role || "student",
-      decoded.institutionId || "",
     );
 
+    // Read fresh role/institutionId from the user doc (not stale token claims)
+    const freshUserDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
+    const freshData = freshUserDoc.data();
+
     writeAuditLog({
-      institutionId: decoded.institutionId || "",
+      institutionId: freshData?.institutionId || "",
       userId: decoded.uid,
       userEmail: decoded.email || "",
-      userRole: decoded.role || "student",
+      userRole: freshData?.role || "student",
       action: "auth.login",
       resource: "session",
       resourceId: decoded.uid,

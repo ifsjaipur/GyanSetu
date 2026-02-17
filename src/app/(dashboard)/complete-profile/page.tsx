@@ -80,19 +80,25 @@ export default function CompleteProfilePage() {
   const [geoDetecting, setGeoDetecting] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Fetch browseable child institutions
-  // Show even if user already has the mother institution, so they can pick a child
+  // Global (mother) institution state
+  const [globalInstitution, setGlobalInstitution] = useState<BrowseInstitution | null>(null);
+
+  // Fetch all browseable institutions (mother + children)
   useEffect(() => {
     async function fetchInstitutions() {
       try {
         const res = await fetch("/api/institutions?browse=true");
         if (res.ok) {
           const data = await res.json();
-          // Only show child institutions in the browse list (not the mother)
-          const childInstitutions = (data.institutions || []).filter(
+          const allInstitutions = data.institutions || [];
+          const mother = allInstitutions.find(
+            (inst: BrowseInstitution) => inst.institutionType === "mother"
+          ) || null;
+          const children = allInstitutions.filter(
             (inst: BrowseInstitution) => inst.institutionType !== "mother"
           );
-          setInstitutions(childInstitutions);
+          setGlobalInstitution(mother);
+          setInstitutions(children);
         }
       } catch { /* ignore */ }
     }
@@ -472,43 +478,128 @@ export default function CompleteProfilePage() {
             </div>
           </fieldset>
 
-          {/* Institution Selection — browse child institutions */}
-          {institutions.length > 0 && (
+          {/* Institution Selection — Global auto-checked + child radio cards */}
+          {(globalInstitution || institutions.length > 0) && (
             <fieldset className="space-y-3 border-t border-[var(--border)] pt-4">
               <legend className="text-sm font-medium">
-                Select a Pathshala{" "}
-                <span className="font-normal text-[var(--muted-foreground)]">(Optional)</span>
+                Your Institutions
               </legend>
               <p className="text-xs text-[var(--muted-foreground)]">
-                You can join a pathshala now or do it later from your profile.
+                You are automatically enrolled in the Global institution. You may also choose one local pathshala.
               </p>
-              <select
-                value={selectedInstitutionId}
-                onChange={(e) => {
-                  setSelectedInstitutionId(e.target.value);
-                  setShowInviteCode(false);
-                  setInviteCode("");
-                }}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              >
-                <option value="">Skip for now</option>
-                {sortedInstitutions.map((inst) => {
-                  const distance =
-                    userCoords && inst.location?.lat != null && inst.location?.lng != null
-                      ? haversineDistanceKm(userCoords.lat, userCoords.lng, inst.location.lat, inst.location.lng)
-                      : null;
 
-                  return (
-                    <option key={inst.id} value={inst.id}>
-                      {inst.name}
-                      {inst.location?.city ? ` — ${inst.location.city}` : ""}
-                      {inst.location?.state ? `, ${inst.location.state}` : ""}
-                      {distance != null ? ` (~${Math.round(distance)} km)` : ""}
-                    </option>
-                  );
-                })}
-              </select>
+              {/* Global institution — auto-checked, disabled */}
+              {globalInstitution && (
+                <div className="flex items-center gap-3 rounded-lg border-2 border-green-300 bg-green-50 p-3">
+                  <input
+                    type="checkbox"
+                    checked
+                    disabled
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{globalInstitution.name}</div>
+                    <div className="text-xs text-green-700">Auto-enrolled</div>
+                  </div>
+                  <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                    Global
+                  </span>
+                </div>
+              )}
 
+              {/* Child institutions as radio cards */}
+              {institutions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-[var(--muted-foreground)]">
+                    Choose a local pathshala (optional):
+                  </p>
+                  {/* None / skip option */}
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-colors ${
+                      !selectedInstitutionId
+                        ? "border-[var(--brand-primary)] bg-blue-50"
+                        : "border-[var(--border)] hover:border-[var(--brand-primary)]/50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="childInstitution"
+                      checked={!selectedInstitutionId}
+                      onChange={() => {
+                        setSelectedInstitutionId("");
+                        setShowInviteCode(false);
+                        setInviteCode("");
+                      }}
+                      className="h-4 w-4"
+                    />
+                    <div className="text-sm text-[var(--muted-foreground)]">
+                      Skip — join later from profile
+                    </div>
+                  </label>
+
+                  {sortedInstitutions.map((inst, index) => {
+                    const distance =
+                      userCoords && inst.location?.lat != null && inst.location?.lng != null
+                        ? haversineDistanceKm(userCoords.lat, userCoords.lng, inst.location.lat, inst.location.lng)
+                        : null;
+                    const isNearest = index === 0 && distance != null;
+                    const isSelected = selectedInstitutionId === inst.id;
+                    const typeLabel = inst.institutionType === "child_online" ? "Online" : "Offline";
+
+                    return (
+                      <label
+                        key={inst.id}
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-3 transition-colors ${
+                          isSelected
+                            ? "border-[var(--brand-primary)] bg-blue-50"
+                            : "border-[var(--border)] hover:border-[var(--brand-primary)]/50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="childInstitution"
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedInstitutionId(inst.id);
+                            setShowInviteCode(false);
+                            setInviteCode("");
+                          }}
+                          className="mt-0.5 h-4 w-4"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{inst.name}</span>
+                            {isNearest && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                Nearest
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                            {inst.location?.city && `${inst.location.city}`}
+                            {inst.location?.state && `, ${inst.location.state}`}
+                            {distance != null && ` (~${Math.round(distance)} km)`}
+                          </div>
+                          {inst.branding?.institutionTagline && (
+                            <div className="mt-0.5 text-xs text-[var(--muted-foreground)] italic">
+                              {inst.branding.institutionTagline}
+                            </div>
+                          )}
+                        </div>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          inst.institutionType === "child_online"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-orange-100 text-orange-700"
+                        }`}>
+                          {typeLabel}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Invite code for selected child institution */}
               {selectedInstitutionId && (
                 <div>
                   <button

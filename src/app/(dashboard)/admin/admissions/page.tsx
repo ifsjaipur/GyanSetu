@@ -306,34 +306,6 @@ export default function AdminAdmissionsPage() {
 
   /* ---------- Promote role ---------- */
 
-  async function handlePromote(userId: string, newRole: string) {
-    setActionLoading(userId);
-    try {
-      const res = await fetch(`/api/users/${userId}/role`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: newRole }),
-      });
-      if (res.ok) {
-        setAdmissions((prev) =>
-          prev.map((a) =>
-            a.userId === userId ? { ...a, role: newRole } : a
-          )
-        );
-      } else {
-        const data = await res.json().catch(() => ({}));
-        alert(`Failed to update role: ${data.error || res.statusText}`);
-      }
-    } catch (err) {
-      console.error("Failed to update role:", err);
-      alert("Failed to update role. Please try again.");
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  const isSuperAdmin = userData?.role === "super_admin";
-
   /* ---------- Sync missing memberships ---------- */
 
   async function handleSyncMembers() {
@@ -631,39 +603,7 @@ export default function AdminAdmissionsPage() {
                           </button>
                         </div>
                       ) : admission.status === "approved" ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            {admission.role === "student" ? "Student" : admission.role.replace(/_/g, " ")}
-                          </span>
-                          {admission.role === "student" && (
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) handlePromote(admission.userId, e.target.value);
-                              }}
-                              disabled={actionLoading === admission.userId}
-                              className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs disabled:opacity-50"
-                            >
-                              <option value="">Promote...</option>
-                              <option value="instructor">Instructor</option>
-                              <option value="institution_admin">Institution Admin</option>
-                              {isSuperAdmin && <option value="super_admin">Super Admin</option>}
-                            </select>
-                          )}
-                          {admission.role !== "student" && (
-                            <select
-                              value={admission.role}
-                              onChange={(e) => handlePromote(admission.userId, e.target.value)}
-                              disabled={actionLoading === admission.userId}
-                              className="rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs disabled:opacity-50"
-                            >
-                              <option value="student">Student</option>
-                              <option value="instructor">Instructor</option>
-                              <option value="institution_admin">Institution Admin</option>
-                              {isSuperAdmin && <option value="super_admin">Super Admin</option>}
-                            </select>
-                          )}
-                        </div>
+                        <span className="text-xs font-medium text-green-600">Student</span>
                       ) : (
                         <span className="text-xs text-[var(--muted-foreground)]">
                           {admission.reviewNote
