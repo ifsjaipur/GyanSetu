@@ -67,10 +67,15 @@ export interface InstitutionLocation {
   timezone: string; // e.g. "Asia/Kolkata"
 }
 
+export type InstitutionType = "mother" | "child_online" | "child_offline";
+
 export interface Institution {
   id: string;
   name: string;
   slug: string;
+  /** null for mother institute, mother's id for child institutes */
+  parentInstitutionId: string | null;
+  institutionType: InstitutionType;
   allowedEmailDomains: string[];
   inviteCode: string;
   location: InstitutionLocation | null;

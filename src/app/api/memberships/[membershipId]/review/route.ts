@@ -130,6 +130,37 @@ export async function PUT(
         });
       }
 
+      // Auto-enroll in mother institute if this is a child institution
+      const instDoc = await db.collection("institutions").doc(institutionId).get();
+      const instData = instDoc.exists ? instDoc.data() : null;
+      if (instData?.parentInstitutionId) {
+        const motherMembershipRef = db
+          .collection("users")
+          .doc(userId)
+          .collection("memberships")
+          .doc(instData.parentInstitutionId);
+        const motherMembership = await motherMembershipRef.get();
+        if (!motherMembership.exists) {
+          await motherMembershipRef.set({
+            id: instData.parentInstitutionId,
+            userId,
+            institutionId: instData.parentInstitutionId,
+            role: "student",
+            status: "approved",
+            isExternal: false,
+            joinMethod: "auto_parent",
+            requestedAt: FieldValue.serverTimestamp(),
+            reviewedAt: FieldValue.serverTimestamp(),
+            reviewedBy: null,
+            reviewNote: `Auto-enrolled via child institution ${institutionId}`,
+            transferredTo: null,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          console.log(`Auto-enrolled ${userId} in mother institution ${instData.parentInstitutionId}`);
+        }
+      }
+
       writeAuditLog(
         {
           institutionId,

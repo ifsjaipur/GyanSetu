@@ -88,9 +88,22 @@ export async function POST(request: NextRequest) {
     // Generate a unique 8-char invite code
     const inviteCode = randomBytes(4).toString("hex").toUpperCase();
 
+    // Validate parent institution exists if specified
+    if (data.parentInstitutionId) {
+      const parentDoc = await db.collection("institutions").doc(data.parentInstitutionId).get();
+      if (!parentDoc.exists) {
+        return NextResponse.json(
+          { error: "Parent institution not found" },
+          { status: 400 }
+        );
+      }
+    }
+
     const docData = {
       ...data,
       id: data.slug,
+      parentInstitutionId: data.parentInstitutionId || null,
+      institutionType: data.institutionType || "child_online",
       inviteCode,
       location: data.location || {
         country: "",

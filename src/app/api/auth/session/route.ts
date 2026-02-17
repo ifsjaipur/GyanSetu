@@ -38,6 +38,22 @@ async function ensureUserDoc(uid: string, email: string, displayName: string, ph
       }
     }
 
+    // If still no institution matched, auto-assign to the mother institution
+    // Every user is at minimum a member of the mother institute
+    let motherInstitutionId = "";
+    if (!matchedInstitutionId) {
+      const motherSnap = await db
+        .collection("institutions")
+        .where("institutionType", "==", "mother")
+        .where("isActive", "==", true)
+        .limit(1)
+        .get();
+      if (!motherSnap.empty) {
+        motherInstitutionId = motherSnap.docs[0].id;
+        matchedInstitutionId = motherInstitutionId;
+      }
+    }
+
     const isExternal = !matchedInstitutionId;
 
     await userRef.set({

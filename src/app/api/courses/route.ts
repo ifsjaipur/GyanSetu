@@ -35,35 +35,90 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Last resort: use default institution
+    // Last resort: find the mother institution
     if (!institutionId) {
-      institutionId = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
+      const motherSnap = await db
+        .collection("institutions")
+        .where("institutionType", "==", "mother")
+        .where("isActive", "==", true)
+        .limit(1)
+        .get();
+      institutionId = !motherSnap.empty
+        ? motherSnap.docs[0].id
+        : process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
     }
 
-    let query = db
-      .collection("courses")
-      .where("institutionId", "==", institutionId);
-
-    // Students only see published courses
-    if (role === "student") {
-      query = query.where("status", "==", "published");
-    }
-
-    // Instructors only see their assigned courses
-    if (role === "instructor") {
-      query = query.where("instructorIds", "array-contains", decoded.uid);
+    // Build list of institution IDs to query
+    // Students/instructors see their institution's courses + mother institution's courses
+    const institutionIds = [institutionId];
+    if (role === "student" || role === "instructor") {
+      const instDoc = await db.collection("institutions").doc(institutionId).get();
+      const instData = instDoc.exists ? instDoc.data() : null;
+      if (instData?.parentInstitutionId) {
+        institutionIds.push(instData.parentInstitutionId);
+      }
     }
 
     const typeFilter = searchParams.get("type");
-    if (typeFilter) {
-      query = query.where("type", "==", typeFilter);
+
+    // Firestore doesn't allow combining "in" with "array-contains" in one query,
+    // so for instructors we run separate queries per institution
+    let courses;
+    if (role === "instructor") {
+      const promises = institutionIds.map(async (instId) => {
+        let q = db
+          .collection("courses")
+          .where("institutionId", "==", instId)
+          .where("instructorIds", "array-contains", decoded.uid);
+        if (typeFilter) q = q.where("type", "==", typeFilter);
+        const s = await q.get();
+        return s.docs.map((d) => ({ id: d.id, ...d.data() }));
+      });
+      courses = (await Promise.all(promises)).flat();
+    } else {
+      let query = db
+        .collection("courses")
+        .where("institutionId", "in", institutionIds);
+
+      if (role === "student") {
+        query = query.where("status", "==", "published");
+      }
+      if (typeFilter) {
+        query = query.where("type", "==", typeFilter);
+      }
+
+      const snap = await query.get();
+      courses = snap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
     }
 
-    const snap = await query.get();
-    const courses = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // Enrich courses with source institution name and branding color
+    // (useful when courses come from multiple institutions)
+    if (institutionIds.length > 1) {
+      const instRefs = institutionIds.map((iid) => db.collection("institutions").doc(iid));
+      const instDocs = await db.getAll(...instRefs);
+      const instMap = new Map<string, { name: string; primaryColor: string }>();
+      instDocs.forEach((d) => {
+        if (d.exists) {
+          const data = d.data()!;
+          instMap.set(d.id, {
+            name: data.name || d.id,
+            primaryColor: data.branding?.primaryColor || "",
+          });
+        }
+      });
+
+      courses = courses.map((c: Record<string, unknown>) => {
+        const inst = instMap.get(c.institutionId as string);
+        return {
+          ...c,
+          institutionName: inst?.name || null,
+          institutionColor: inst?.primaryColor || null,
+        };
+      });
+    }
 
     const response = NextResponse.json({ courses });
     response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");

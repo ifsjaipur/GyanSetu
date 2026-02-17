@@ -16,6 +16,8 @@ import { properCaseName, trimWhitespace } from "@/lib/utils/normalize";
 interface BrowseInstitution {
   id: string;
   name: string;
+  institutionType?: string;
+  parentInstitutionId?: string | null;
   location?: { city?: string; state?: string; country?: string; lat?: number | null; lng?: number | null };
   branding?: { institutionTagline?: string };
 }
@@ -78,20 +80,24 @@ export default function CompleteProfilePage() {
   const [geoDetecting, setGeoDetecting] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Fetch browseable institutions for users without an institution
+  // Fetch browseable child institutions
+  // Show even if user already has the mother institution, so they can pick a child
   useEffect(() => {
-    if (userData?.institutionId) return; // already has an institution
     async function fetchInstitutions() {
       try {
         const res = await fetch("/api/institutions?browse=true");
         if (res.ok) {
           const data = await res.json();
-          setInstitutions(data.institutions || []);
+          // Only show child institutions in the browse list (not the mother)
+          const childInstitutions = (data.institutions || []).filter(
+            (inst: BrowseInstitution) => inst.institutionType !== "mother"
+          );
+          setInstitutions(childInstitutions);
         }
       } catch { /* ignore */ }
     }
     fetchInstitutions();
-  }, [userData?.institutionId]);
+  }, []);
 
   // Auto-detect user location via IP geolocation
   useEffect(() => {
@@ -229,8 +235,8 @@ export default function CompleteProfilePage() {
 
       await setDoc(doc(db, "users", firebaseUser.uid), updateData, { merge: true });
 
-      // If user selected an institution, create a membership request
-      if (selectedInstitutionId && !userData?.institutionId) {
+      // If user selected a child institution, create a membership request
+      if (selectedInstitutionId) {
         try {
           const body: Record<string, string> = {
             institutionId: selectedInstitutionId,
@@ -466,15 +472,15 @@ export default function CompleteProfilePage() {
             </div>
           </fieldset>
 
-          {/* Institution Selection (for users without an institution) */}
-          {!userData?.institutionId && institutions.length > 0 && (
+          {/* Institution Selection — browse child institutions */}
+          {institutions.length > 0 && (
             <fieldset className="space-y-3 border-t border-[var(--border)] pt-4">
               <legend className="text-sm font-medium">
-                Select an Institution{" "}
+                Select a Pathshala{" "}
                 <span className="font-normal text-[var(--muted-foreground)]">(Optional)</span>
               </legend>
               <p className="text-xs text-[var(--muted-foreground)]">
-                You can join an institution now or do it later from your dashboard.
+                You can join a pathshala now or do it later from your profile.
               </p>
               <select
                 value={selectedInstitutionId}

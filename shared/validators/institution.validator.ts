@@ -30,6 +30,8 @@ export const institutionLocationSchema = z.object({
   timezone: z.string().max(50).default("Asia/Kolkata"),
 });
 
+const institutionTypeEnum = z.enum(["mother", "child_online", "child_offline"]);
+
 export const createInstitutionSchema = z.object({
   name: z.string().min(2).max(100),
   slug: z
@@ -37,6 +39,8 @@ export const createInstitutionSchema = z.object({
     .min(2)
     .max(30)
     .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  parentInstitutionId: z.string().nullable().optional().default(null),
+  institutionType: institutionTypeEnum.optional().default("child_online"),
   allowedEmailDomains: z.array(z.string().min(3)),
   location: institutionLocationSchema.optional(),
   branding: institutionBrandingSchema,
@@ -58,6 +62,8 @@ export const updateInstitutionSchema = z.object({
     .max(30)
     .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens")
     .optional(),
+  parentInstitutionId: z.string().nullable().optional(),
+  institutionType: institutionTypeEnum.optional(),
   allowedEmailDomains: z.array(z.string().min(3)).optional(),
   branding: z.object({
     logoUrl: optionalUrl.optional(),

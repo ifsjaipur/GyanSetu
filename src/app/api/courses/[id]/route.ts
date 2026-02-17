@@ -38,10 +38,27 @@ export async function GET(
       if (userDoc.exists) userInstitutionId = userDoc.data()?.institutionId;
     }
     if (!userInstitutionId) {
-      userInstitutionId = process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
+      const motherSnap = await db
+        .collection("institutions")
+        .where("institutionType", "==", "mother")
+        .where("isActive", "==", true)
+        .limit(1)
+        .get();
+      userInstitutionId = !motherSnap.empty
+        ? motherSnap.docs[0].id
+        : process.env.NEXT_PUBLIC_DEFAULT_INSTITUTION_ID || "ifs";
     }
 
-    if (role !== "super_admin" && course.institutionId !== userInstitutionId) {
+    // Allow access if course belongs to user's institution OR its mother institution
+    let hasAccess = role === "super_admin" || course.institutionId === userInstitutionId;
+    if (!hasAccess && userInstitutionId) {
+      const userInstDoc = await db.collection("institutions").doc(userInstitutionId).get();
+      const parentId = userInstDoc.exists ? userInstDoc.data()?.parentInstitutionId : null;
+      if (parentId && course.institutionId === parentId) {
+        hasAccess = true;
+      }
+    }
+    if (!hasAccess) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

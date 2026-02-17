@@ -13,6 +13,8 @@ interface CourseItem {
   enrollmentCount: number;
   thumbnailUrl: string;
   status: string;
+  institutionName?: string | null;
+  institutionColor?: string | null;
 }
 
 export default function CourseCatalogPage() {
@@ -129,6 +131,17 @@ export default function CourseCatalogPage() {
                 )}
               </div>
               <div className="p-4">
+                {course.institutionName && (
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: course.institutionColor || "var(--brand-primary)" }}
+                    />
+                    <span className="text-xs font-medium text-[var(--muted-foreground)]">
+                      {course.institutionName}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs">
                     {course.type.replace("_", " ")}
