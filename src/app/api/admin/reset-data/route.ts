@@ -1,38 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
-import { writeAuditLog } from "@/lib/audit-log";
 
 // Allow up to 60s for this heavy operation (Vercel Hobby max)
 export const maxDuration = 60;
 
 const BATCH_SIZE = 400; // Stay under Firestore's 500-op batch limit
 
-async function deleteCollection(
+const VALID_CATEGORIES = [
+  "institutions",
+  "users",
+  "courses",
+  "enrollments",
+  "payments",
+  "certificates",
+  "exams",
+  "attendance",
+  "videoProgress",
+  "zoomMeetings",
+  "auditLogs",
+  "pushSubscriptions",
+] as const;
+
+type Category = (typeof VALID_CATEGORIES)[number];
+
+/** Delete all docs in a collection (no institutionId filter — full wipe) */
+async function deleteCollectionAll(
   db: FirebaseFirestore.Firestore,
   collectionPath: string,
-  institutionId: string,
-  excludeDocId?: string
+  excludeDocIds?: string[]
 ): Promise<number> {
   let deleted = 0;
-  let query = db
-    .collection(collectionPath)
-    .where("institutionId", "==", institutionId)
-    .limit(BATCH_SIZE);
+  const excludeSet = new Set(excludeDocIds || []);
 
-  let snap = await query.get();
+  let snap = await db.collection(collectionPath).limit(BATCH_SIZE).get();
   while (!snap.empty) {
     const batch = db.batch();
+    let batchCount = 0;
     for (const doc of snap.docs) {
-      if (excludeDocId && doc.id === excludeDocId) continue;
+      if (excludeSet.has(doc.id)) continue;
       batch.delete(doc.ref);
       deleted++;
+      batchCount++;
     }
-    await batch.commit();
-    snap = await query.get();
+    if (batchCount > 0) await batch.commit();
+
+    // If all docs were excluded, stop to avoid infinite loop
+    if (batchCount === 0) break;
+    snap = await db.collection(collectionPath).limit(BATCH_SIZE).get();
   }
   return deleted;
 }
 
+/** Delete subcollections of a doc, then the doc itself */
 async function deleteCourseSubcollections(
   db: FirebaseFirestore.Firestore,
   courseId: string
@@ -41,8 +60,6 @@ async function deleteCourseSubcollections(
 
   // Delete lessons inside each module
   const modulesSnap = await courseRef.collection("modules").get();
-
-  // Process all modules in parallel
   await Promise.all(
     modulesSnap.docs.map(async (moduleDoc) => {
       const lessonsSnap = await courseRef
@@ -52,7 +69,6 @@ async function deleteCourseSubcollections(
         .get();
 
       if (lessonsSnap.empty) {
-        // Just delete the module doc
         await moduleDoc.ref.delete();
         return;
       }
@@ -77,29 +93,67 @@ async function deleteCourseSubcollections(
   }
 }
 
-async function deleteUsersWithAuth(
+/** Delete all courses with their modules/lessons/sessions */
+async function deleteAllCourses(db: FirebaseFirestore.Firestore): Promise<number> {
+  const coursesSnap = await db.collection("courses").get();
+  const courseDocs = coursesSnap.docs;
+
+  // Process up to 10 courses in parallel for subcollection cleanup
+  for (let i = 0; i < courseDocs.length; i += 10) {
+    const chunk = courseDocs.slice(i, i + 10);
+    await Promise.all(
+      chunk.map((courseDoc) => deleteCourseSubcollections(db, courseDoc.id))
+    );
+  }
+
+  // Delete course docs in batches
+  for (let i = 0; i < courseDocs.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const slice = courseDocs.slice(i, i + BATCH_SIZE);
+    for (const courseDoc of slice) {
+      batch.delete(courseDoc.ref);
+    }
+    await batch.commit();
+  }
+
+  return coursesSnap.size;
+}
+
+/** Delete all users (except requesting admin) + their memberships + Firebase Auth */
+async function deleteAllUsers(
   db: FirebaseFirestore.Firestore,
   auth: ReturnType<typeof getAdminAuth>,
-  institutionId: string,
   requestingUid: string
 ): Promise<number> {
   let deleted = 0;
-  let query = db
-    .collection("users")
-    .where("institutionId", "==", institutionId)
-    .limit(BATCH_SIZE);
 
-  let snap = await query.get();
+  let snap = await db.collection("users").limit(BATCH_SIZE).get();
   while (!snap.empty) {
     const batch = db.batch();
     const authDeletePromises: Promise<void>[] = [];
+    let batchCount = 0;
 
     for (const doc of snap.docs) {
       if (doc.id === requestingUid) continue;
+
+      // Delete memberships subcollection
+      const membershipsSnap = await db
+        .collection("users")
+        .doc(doc.id)
+        .collection("memberships")
+        .get();
+      if (!membershipsSnap.empty) {
+        const subBatch = db.batch();
+        for (const memDoc of membershipsSnap.docs) {
+          subBatch.delete(memDoc.ref);
+        }
+        await subBatch.commit();
+      }
+
       batch.delete(doc.ref);
       deleted++;
+      batchCount++;
 
-      // Queue Auth deletion in parallel instead of awaiting each one
       authDeletePromises.push(
         auth.deleteUser(doc.id).catch(() => {
           // User may not exist in Auth — ignore
@@ -107,19 +161,68 @@ async function deleteUsersWithAuth(
       );
     }
 
-    // Run Firestore batch and Auth deletions in parallel
-    await Promise.all([batch.commit(), ...authDeletePromises]);
+    if (batchCount > 0) {
+      await Promise.all([batch.commit(), ...authDeletePromises]);
+    } else {
+      break; // Only excluded user remains
+    }
 
-    // Re-query (excluding already deleted)
-    snap = await query.get();
+    snap = await db.collection("users").limit(BATCH_SIZE).get();
   }
+
+  // Also delete the requesting admin's memberships (but keep their user doc)
+  const adminMembershipsSnap = await db
+    .collection("users")
+    .doc(requestingUid)
+    .collection("memberships")
+    .get();
+  if (!adminMembershipsSnap.empty) {
+    const batch = db.batch();
+    for (const doc of adminMembershipsSnap.docs) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+  }
+
   return deleted;
+}
+
+/** Delete zoomMeetings + their participants subcollection */
+async function deleteAllZoomMeetings(db: FirebaseFirestore.Firestore): Promise<number> {
+  const meetingsSnap = await db.collection("zoomMeetings").get();
+
+  for (const meetingDoc of meetingsSnap.docs) {
+    const participantsSnap = await db
+      .collection("zoomMeetings")
+      .doc(meetingDoc.id)
+      .collection("participants")
+      .get();
+    if (!participantsSnap.empty) {
+      const batch = db.batch();
+      for (const doc of participantsSnap.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    }
+  }
+
+  // Now delete meeting docs
+  for (let i = 0; i < meetingsSnap.docs.length; i += BATCH_SIZE) {
+    const batch = db.batch();
+    const slice = meetingsSnap.docs.slice(i, i + BATCH_SIZE);
+    for (const doc of slice) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+  }
+
+  return meetingsSnap.size;
 }
 
 /**
  * POST /api/admin/reset-data
- * Full data wipe for an institution. Super admin only.
- * Requires confirmPhrase: "DELETE ALL DATA"
+ * Selective data wipe. Super admin only.
+ * Body: { confirmPhrase: "DELETE ALL DATA", categories: string[] }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -141,83 +244,83 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const institutionId = decoded.institutionId;
-    if (!institutionId) {
-      return NextResponse.json({ error: "No institution assigned" }, { status: 400 });
+    const categories: string[] = body.categories || [];
+    const validCategories = categories.filter((c): c is Category =>
+      VALID_CATEGORIES.includes(c as Category)
+    );
+
+    if (validCategories.length === 0) {
+      return NextResponse.json(
+        { error: "No valid categories selected" },
+        { status: 400 }
+      );
     }
 
     const db = getAdminDb();
     const auth = getAdminAuth();
     const counts: Record<string, number> = {};
 
-    // 1. Delete courses + subcollections (parallelize subcollection cleanup)
-    const coursesSnap = await db
-      .collection("courses")
-      .where("institutionId", "==", institutionId)
-      .get();
+    for (const category of validCategories) {
+      switch (category) {
+        case "institutions":
+          // Delete all institutions (no filter — full wipe across all institutions)
+          counts.institutions = await deleteCollectionAll(db, "institutions");
+          break;
 
-    // Process up to 10 courses in parallel for subcollection cleanup
-    const courseChunks: FirebaseFirestore.QueryDocumentSnapshot[][] = [];
-    const courseDocs = coursesSnap.docs;
-    for (let i = 0; i < courseDocs.length; i += 10) {
-      courseChunks.push(courseDocs.slice(i, i + 10));
-    }
-    for (const chunk of courseChunks) {
-      await Promise.all(
-        chunk.map((courseDoc) => deleteCourseSubcollections(db, courseDoc.id))
-      );
-    }
+        case "users":
+          counts.users = await deleteAllUsers(db, auth, decoded.uid);
+          break;
 
-    // Now delete course docs in batches
-    for (let i = 0; i < courseDocs.length; i += BATCH_SIZE) {
-      const batch = db.batch();
-      const slice = courseDocs.slice(i, i + BATCH_SIZE);
-      for (const courseDoc of slice) {
-        batch.delete(courseDoc.ref);
+        case "courses":
+          counts.courses = await deleteAllCourses(db);
+          break;
+
+        case "exams":
+          // Delete both exams and examAttempts
+          counts.exams = await deleteCollectionAll(db, "exams");
+          counts.examAttempts = await deleteCollectionAll(db, "examAttempts");
+          break;
+
+        case "zoomMeetings":
+          counts.zoomMeetings = await deleteAllZoomMeetings(db);
+          break;
+
+        case "enrollments":
+        case "payments":
+        case "certificates":
+        case "attendance":
+        case "videoProgress":
+        case "auditLogs":
+        case "pushSubscriptions":
+          counts[category] = await deleteCollectionAll(db, category);
+          break;
       }
-      await batch.commit();
     }
-    counts.courses = coursesSnap.size;
 
-    // 2. Delete users (except requesting admin) + their Firebase Auth accounts
-    counts.users = await deleteUsersWithAuth(db, auth, institutionId, decoded.uid);
+    // Reset admin user's claims (clear institutionId since institutions may be deleted)
+    if (validCategories.includes("institutions")) {
+      await auth.setCustomUserClaims(decoded.uid, {
+        role: "super_admin",
+        institutionId: "",
+        activeInstitutionId: "",
+      });
 
-    // 3. Delete other collections — run independent collections in parallel
-    const collections = [
-      "enrollments",
-      "payments",
-      "attendance",
-      "certificates",
-      "exams",
-      "examAttempts",
-      "videoProgress",
-      "auditLogs",
-    ];
-
-    const collectionResults = await Promise.all(
-      collections.map((col) => deleteCollection(db, col, institutionId))
-    );
-    collections.forEach((col, i) => {
-      counts[col] = collectionResults[i];
-    });
-
-    writeAuditLog({
-      institutionId,
-      userId: decoded.uid,
-      userEmail: decoded.email || "",
-      userRole: decoded.role,
-      action: "admin.reset_data",
-      resource: "institution",
-      resourceId: institutionId,
-      details: { counts },
-      severity: "critical",
-    }, request);
+      // Also clear institutionId on admin's user doc
+      const adminRef = db.collection("users").doc(decoded.uid);
+      const adminDoc = await adminRef.get();
+      if (adminDoc.exists) {
+        await adminRef.update({
+          institutionId: "",
+          activeInstitutionId: "",
+        });
+      }
+    }
 
     return NextResponse.json({
       message: "Data reset complete",
       counts,
+      deletedCategories: validCategories,
       preserved: {
-        institution: institutionId,
         adminUser: decoded.uid,
       },
     });

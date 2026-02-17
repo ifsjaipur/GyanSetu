@@ -235,6 +235,315 @@ A secure, scalable Learning Management System built on **Google Workspace** and 
 
 ---
 
+## Database Schema (Firestore)
+
+### Collections Overview
+
+```
+institutions                       # Top-level — multi-tenant config
+users                              # Top-level — Firebase Auth profiles
+  └── memberships (subcollection)  # users/{uid}/memberships/{institutionId}
+courses                            # Top-level
+  ├── modules (subcollection)      # courses/{id}/modules/{moduleId}
+  │   └── lessons (subcollection)  # .../modules/{moduleId}/lessons/{lessonId}
+  └── sessions (subcollection)     # courses/{id}/sessions/{sessionId}
+enrollments                        # Top-level
+payments                           # Top-level
+certificates                      # Top-level
+exams                              # Top-level
+examAttempts                       # Top-level
+videoProgress                      # Top-level
+attendance                         # Top-level
+zoomMeetings                       # Top-level
+  └── participants (subcollection) # zoomMeetings/{id}/participants
+auditLogs                          # Top-level
+pushSubscriptions                  # Top-level
+```
+
+### `institutions`
+
+Mother/child hierarchy. Mother institution is the central hub; child institutions link via `parentInstitutionId`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Document ID (= slug) |
+| `name` | `string` | Display name |
+| `slug` | `string` | URL-friendly ID |
+| `parentInstitutionId` | `string \| null` | Mother's ID (null for mother itself) |
+| `institutionType` | `enum` | `mother \| child_online \| child_offline` |
+| `allowedEmailDomains` | `string[]` | Auto-matched on sign-up |
+| `inviteCode` | `string` | 8-char join code |
+| `isActive` | `boolean` | Soft-disable |
+| `location` | `object \| null` | `{ country, state, city, lat, lng, timezone }` |
+| `branding` | `object` | `{ logoUrl, faviconUrl, primaryColor, secondaryColor, accentColor, headerBgColor, footerText, institutionTagline }` |
+| `googleWorkspace` | `object` | `{ customerDomain, adminEmail, serviceAccountKeyRef, classroomTeacherEmail }` |
+| `razorpay` | `object` | `{ keyId, keySecretRef, webhookSecretRef }` |
+| `whatsapp` | `object \| null` | `{ accessToken, phoneNumberId, businessAccountId }` |
+| `zoom` | `object \| null` | `{ accountId, clientId, clientSecretRef, webhookSecretToken, defaultUserId, isEnabled }` |
+| `settings` | `object` | `{ defaultCourseAccessDays, certificateTemplateDocId, certificateFolderId, videoStorageBucket, enableSelfRegistration, allowExternalUsers, requireEmailVerification, maintenanceMode, locale }` |
+| `contactInfo` | `object` | `{ supportEmail, phone, address, website }` |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `users`
+
+Firebase Auth profile. Custom claims mirror `role` + `institutionId`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uid` | `string` | Firebase Auth UID (doc ID) |
+| `email` | `string` | |
+| `displayName` | `string` | |
+| `photoUrl` | `string \| null` | |
+| `phone` | `string \| null` | WhatsApp number (with country code) |
+| `gender` | `string \| null` | `male \| female \| other \| prefer_not_to_say` |
+| `institutionId` | `string` | Primary/active institution |
+| `activeInstitutionId` | `string \| null` | Explicit active institution |
+| `role` | `UserRole` | `super_admin \| institution_admin \| instructor \| student` |
+| `isExternal` | `boolean` | Email didn't match any domain |
+| `consentGiven` | `boolean` | Data consent |
+| `profileComplete` | `boolean` | Must complete after first login |
+| `address` | `object \| null` | `{ address, city, state, country, pincode }` |
+| `profile` | `object` | `{ bio, dateOfBirth, enrollmentNumber, department }` |
+| `parentGuardian` | `object \| null` | `{ name, phone, email, address, relation }` (required if age < 13) |
+| `preferences` | `object` | `{ emailNotifications, language }` |
+| `isActive` | `boolean` | |
+| `lastLoginAt / createdAt / updatedAt` | `Timestamp` | |
+
+**Subcollection:** `users/{uid}/memberships/{institutionId}`
+
+### `memberships` (subcollection)
+
+Path: `users/{uid}/memberships/{institutionId}`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | = `institutionId` |
+| `userId` | `string` | |
+| `institutionId` | `string` | |
+| `role` | `UserRole` | Role within this institution |
+| `status` | `MembershipStatus` | `pending \| approved \| rejected \| transferred` |
+| `isExternal` | `boolean` | |
+| `joinMethod` | `JoinMethod` | `browse \| invite_code \| email_domain \| admin_added \| auto_parent` |
+| `requestedAt` | `Timestamp` | |
+| `reviewedAt / reviewedBy` | `Timestamp \| string` | Admin who reviewed |
+| `reviewNote` | `string \| null` | |
+| `transferredTo` | `string \| null` | Target institution if transferred |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `courses`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Auto-generated |
+| `institutionId` | `string` | Owning institution |
+| `title` | `string` | |
+| `slug` | `string` | Unique within institution |
+| `description / shortDescription` | `string` | Full (markdown) / card summary |
+| `thumbnailUrl` | `string` | |
+| `type` | `CourseType` | `bootcamp \| instructor_led \| self_paced` |
+| `pricing` | `object` | `{ amount (paise), currency, originalAmount, isFree }` |
+| `bootcampConfig` | `object \| null` | `{ startDate, endDate, schedule[], maxStudents, minAttendancePercent }` |
+| `instructorLedConfig` | `object \| null` | `{ startDate, endDate, schedule, liveSessionCount }` |
+| `selfPacedConfig` | `object \| null` | `{ accessDurationDays, estimatedHours }` |
+| `classroomCourseId / classroomInviteLink` | `string \| null` | Google Classroom link |
+| `instructorIds` | `string[]` | Assigned instructor UIDs |
+| `tags / prerequisites` | `string[]` | |
+| `skillLevel` | `enum` | `beginner \| intermediate \| advanced` |
+| `moduleOrder` | `string[]` | Ordered module IDs |
+| `status` | `CourseStatus` | `draft \| published \| archived` |
+| `isVisible` | `boolean` | |
+| `enrollmentCount` | `number` | Denormalized |
+| `copiedFrom` | `object \| null` | `{ courseId, institutionId }` — when copied between institutions |
+| `createdBy` | `string` | UID |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+**Subcollections:** `modules/{moduleId}`, `sessions/{sessionId}`
+
+### `modules` (subcollection of `courses`)
+
+Path: `courses/{courseId}/modules/{moduleId}`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / courseId` | `string` | |
+| `title / description` | `string` | |
+| `order` | `number` | Display order |
+| `lessonOrder` | `string[]` | Ordered lesson IDs |
+| `isPublished` | `boolean` | |
+| `unlockAfterModuleId` | `string \| null` | Sequential unlock |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `lessons` (subcollection of `modules`)
+
+Path: `courses/{courseId}/modules/{moduleId}/lessons/{lessonId}`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / moduleId / courseId` | `string` | |
+| `title` | `string` | |
+| `type` | `LessonType` | `video \| text \| quiz \| assignment \| resource` |
+| `order` | `number` | |
+| `videoConfig` | `object \| null` | `{ videoUrl, videoDurationSeconds, videoSource, youtubeVideoId, driveFileId, gcsPath, checkpoints[], requireFullWatch }` |
+| `textContent` | `string \| null` | Markdown |
+| `resources` | `array` | `[{ title, url, type, driveFileId }]` |
+| `assignmentConfig` | `object \| null` | `{ classroomAssignmentId, instructions, dueDate, maxPoints }` |
+| `isPublished` | `boolean` | |
+| `estimatedMinutes` | `number` | |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `enrollments`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / userId / courseId / institutionId` | `string` | |
+| `status` | `EnrollmentStatus` | `pending_payment \| active \| expired \| completed \| cancelled \| refunded` |
+| `paymentId` | `string \| null` | |
+| `accessStartDate / accessEndDate` | `Timestamp` | |
+| `classroomEnrolled` | `boolean` | Synced to Google Classroom |
+| `progress` | `object` | `{ completedLessons, totalLessons, completedModules, totalModules, percentComplete, lastAccessedAt, lastLessonId }` |
+| `attendanceCount / totalSessions` | `number` | |
+| `certificateId` | `string \| null` | |
+| `certificateEligible` | `boolean` | |
+| `enrolledAt / completedAt / expiredAt` | `Timestamp \| null` | |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `payments`
+
+Razorpay integration.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / userId / courseId / institutionId` | `string` | |
+| `razorpayOrderId` | `string` | |
+| `razorpayPaymentId / razorpaySignature` | `string \| null` | |
+| `amount` | `number` | In paise (INR) |
+| `currency` | `string` | |
+| `status` | `PaymentStatus` | `created \| authorized \| captured \| failed \| refunded \| partially_refunded` |
+| `refundId / refundAmount / refundReason` | `string \| number \| null` | |
+| `paymentMethod / bankName` | `string \| null` | |
+| `receiptNumber` | `string` | |
+| `webhookEvents` | `array` | `[{ eventType, receivedAt, payload }]` |
+| `paidAt / createdAt / updatedAt` | `Timestamp` | |
+
+### `certificates`
+
+Generated from Google Docs templates, stored in Drive.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | e.g., `CERT-IFS-2026-XXXXX` |
+| `userId / courseId / institutionId / enrollmentId` | `string` | |
+| `recipientName / courseName / institutionName` | `string` | Snapshot at generation time |
+| `issueDate / expiryDate` | `Timestamp` | |
+| `googleDocId / pdfDriveFileId / pdfUrl` | `string` | |
+| `publicVerificationUrl` | `string` | Public verify page |
+| `grade` | `string \| null` | |
+| `finalScore` | `number \| null` | |
+| `status` | `CertificateStatus` | `generated \| issued \| revoked` |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `exams`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / courseId / institutionId` | `string` | |
+| `title / description` | `string` | |
+| `type` | `ExamType` | `google_forms \| classroom_assignment \| manual` |
+| `googleFormsConfig` | `object \| null` | `{ formId, formUrl, responseUrl, spreadsheetId, autoGraded }` |
+| `classroomConfig` | `object \| null` | `{ courseWorkId, classroomCourseId, maxPoints, dueDate }` |
+| `manualConfig` | `object \| null` | `{ instructions, rubric, maxScore, submissionType }` |
+| `passingScore / maxAttempts` | `number` | |
+| `timeLimitMinutes` | `number \| null` | |
+| `isRequired` | `boolean` | |
+| `moduleId` | `string \| null` | |
+| `order` | `number` | |
+| `status` | `ExamStatus` | `draft \| published \| closed` |
+| `createdBy` | `string` | |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `examAttempts`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / examId / courseId / userId / institutionId` | `string` | |
+| `attemptNumber` | `number` | |
+| `status` | `AttemptStatus` | `in_progress \| submitted \| graded \| failed` |
+| `score / maxScore / percentageScore` | `number \| null` | |
+| `passed` | `boolean \| null` | |
+| `submissionUrl / submissionText` | `string \| null` | |
+| `evaluatorId / feedback` | `string \| null` | |
+| `startedAt / submittedAt / gradedAt` | `Timestamp \| null` | |
+| `createdAt` | `Timestamp` | |
+
+### `videoProgress`
+
+Per-lesson video watch tracking with checkpoint quiz responses.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | `{userId}_{lessonId}` |
+| `userId / courseId / moduleId / lessonId / institutionId` | `string` | |
+| `currentPositionSeconds / totalDurationSeconds / watchedSeconds` | `number` | |
+| `watchedPercentage` | `number` | 0–100 |
+| `isCompleted` | `boolean` | |
+| `checkpointResponses` | `map` | `{ [checkpointId]: { answeredAt, selectedOptionId, textAnswer, isCorrect } }` |
+| `watchedSegments` | `array` | `[{ start, end }]` |
+| `lastUpdatedAt / createdAt` | `Timestamp` | |
+
+### `attendance`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | `{courseId}_{sessionDate}_{userId}` |
+| `courseId / userId / institutionId` | `string` | |
+| `sessionDate` | `string` | `"2026-02-15"` |
+| `calendarEventId / meetingCode` | `string \| null` | |
+| `status` | `AttendanceStatus` | `present \| absent \| late \| excused` |
+| `joinedAt / leftAt` | `Timestamp \| null` | |
+| `durationMinutes` | `number \| null` | |
+| `markedBy` | `string` | UID |
+| `syncedFromMeet / syncedFromZoom` | `boolean` | Auto-synced |
+| `zoomMeetingId / zoomRegistrantId` | `number \| string \| null` | |
+| `notes` | `string \| null` | |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+### `zoomMeetings`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Firestore doc ID |
+| `zoomMeetingId` | `number` | Zoom's meeting ID |
+| `zoomMeetingUuid / institutionId` | `string` | |
+| `courseId / sessionId` | `string \| null` | |
+| `topic` | `string` | |
+| `startTime / endTime` | `string` | ISO 8601 |
+| `duration` | `number` | Minutes |
+| `joinUrl / startUrl / password` | `string` | |
+| `registrationRequired` | `boolean` | |
+| `status` | `string` | `scheduled \| started \| ended \| cancelled` |
+| `hostEmail / createdBy` | `string` | |
+| `participantCount / registrantCount` | `number` | |
+| `createdAt / updatedAt` | `Timestamp` | |
+
+**Subcollection:** `zoomMeetings/{id}/participants` — live/past participant records
+
+### `auditLogs`
+
+Immutable audit trail.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id / institutionId / userId / userEmail / userRole` | `string` | |
+| `action` | `string` | e.g., `enrollment.create`, `course.update`, `admin.reset_data` |
+| `resource / resourceId` | `string` | |
+| `details` | `map` | Action-specific data |
+| `previousValue / newValue` | `map \| null` | Before/after snapshots |
+| `ipAddress / userAgent` | `string \| null` | |
+| `severity` | `AuditSeverity` | `info \| warning \| critical` |
+| `createdAt` | `Timestamp` | |
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -510,6 +819,14 @@ firebase deploy --only firestore:rules
 - [x] Course-type enrollment rules (self_paced/bootcamp open, instructor_led gated)
 - [x] Structured address collection (city, state, country, pincode)
 - [x] Migration script for existing single-institution users
+- [x] Mother/child institution hierarchy (parentInstitutionId, institutionType)
+- [x] Auto-enrollment in mother institution on sign-up and child approval
+- [x] Cross-institution course visibility (students see mother + child courses)
+- [x] Course copy API (deep-copy between institutions)
+- [x] Institution branding badges on course cards
+- [x] Gender, date of birth, street address fields on student profile
+- [x] Age-based guardian requirement (under 13)
+- [x] Selective data reset page (admin, per-category deletion with cascading cleanup)
 - [ ] Geo-based institution discovery with geocoding API
 - [ ] Merged multi-institution dashboard with timezone display
 - [ ] Institution switcher in sidebar
