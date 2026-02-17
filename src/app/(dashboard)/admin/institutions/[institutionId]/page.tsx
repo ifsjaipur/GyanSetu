@@ -8,6 +8,8 @@ interface InstitutionDetail {
   id: string;
   name: string;
   slug: string;
+  institutionType?: "mother" | "child_online" | "child_offline";
+  parentInstitutionId?: string | null;
   allowedEmailDomains: string[];
   branding: {
     logoUrl: string;
@@ -87,6 +89,8 @@ export default function InstitutionEditPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: inst.name,
+          institutionType: inst.institutionType,
+          parentInstitutionId: inst.parentInstitutionId,
           allowedEmailDomains,
           branding: inst.branding,
           settings: inst.settings,
@@ -126,9 +130,20 @@ export default function InstitutionEditPage() {
       </button>
 
       <h1 className="text-2xl font-bold">{inst.name}</h1>
-      <p className="text-sm text-[var(--muted-foreground)]">
-        {inst.slug}
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-[var(--muted-foreground)]">{inst.slug}</p>
+        {inst.institutionType && (
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            inst.institutionType === "mother"
+              ? "bg-purple-100 text-purple-700"
+              : inst.institutionType === "child_offline"
+                ? "bg-orange-100 text-orange-700"
+                : "bg-blue-100 text-blue-700"
+          }`}>
+            {inst.institutionType === "mother" ? "Global" : inst.institutionType === "child_online" ? "Online Center" : "Offline Center"}
+          </span>
+        )}
+      </div>
 
       {message && (
         <div className={`mt-4 rounded-lg p-3 text-sm ${

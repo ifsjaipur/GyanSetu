@@ -8,6 +8,7 @@ interface InstitutionItem {
   id: string;
   name: string;
   slug: string;
+  institutionType?: "mother" | "child_online" | "child_offline";
   allowedEmailDomains: string[];
   isActive: boolean;
   branding: { primaryColor: string };
@@ -67,7 +68,20 @@ export default function InstitutionsListPage() {
                   style={{ backgroundColor: inst.branding?.primaryColor || "#1E40AF" }}
                 />
                 <div>
-                  <div className="font-medium">{inst.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{inst.name}</span>
+                    {inst.institutionType && (
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                        inst.institutionType === "mother"
+                          ? "bg-purple-100 text-purple-700"
+                          : inst.institutionType === "child_offline"
+                            ? "bg-orange-100 text-orange-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {inst.institutionType === "mother" ? "Global" : inst.institutionType === "child_online" ? "Online Center" : "Offline Center"}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm text-[var(--muted-foreground)]">
                     {inst.slug}{inst.allowedEmailDomains?.length ? ` · ${inst.allowedEmailDomains.join(", ")}` : ""}
                   </div>

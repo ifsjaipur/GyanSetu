@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { trimWhitespace } from "@/lib/utils/normalize";
 import LocationFields from "@/components/LocationFields";
@@ -10,9 +10,21 @@ export default function NewInstitutionPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [institutions, setInstitutions] = useState<{ id: string; name: string; institutionType?: string }[]>([]);
+
+  // Fetch existing institutions for parent dropdown
+  useEffect(() => {
+    fetch("/api/institutions")
+      .then((r) => r.ok ? r.json() : { institutions: [] })
+      .then((d) => setInstitutions(d.institutions || []))
+      .catch(() => {});
+  }, []);
+
   const [form, setForm] = useState({
     name: "",
     slug: "",
+    institutionType: "child_online" as "mother" | "child_online" | "child_offline",
+    parentInstitutionId: "" as string,
     allowedEmailDomains: "",
     branding: {
       logoUrl: "",
@@ -64,6 +76,7 @@ export default function NewInstitutionPage() {
     try {
       const payload: Record<string, unknown> = {
         ...form,
+        parentInstitutionId: form.institutionType === "mother" ? null : (form.parentInstitutionId || null),
         allowedEmailDomains: form.allowedEmailDomains
           .split(",")
           .map((d) => d.trim().toLowerCase())
@@ -142,6 +155,42 @@ export default function NewInstitutionPage() {
                 className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium">Institution Type</label>
+              <select
+                value={form.institutionType}
+                onChange={(e) => {
+                  const val = e.target.value as "mother" | "child_online" | "child_offline";
+                  updateField("institutionType", val);
+                  if (val === "mother") updateField("parentInstitutionId", "");
+                }}
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              >
+                <option value="mother">Global</option>
+                <option value="child_online">Online Center</option>
+                <option value="child_offline">Offline Center</option>
+              </select>
+            </div>
+            {form.institutionType !== "mother" && (
+              <div>
+                <label className="block text-sm font-medium">Parent Institution</label>
+                <select
+                  value={form.parentInstitutionId}
+                  onChange={(e) => updateField("parentInstitutionId", e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                >
+                  <option value="">Select parent...</option>
+                  {institutions
+                    .filter((i) => i.institutionType === "mother")
+                    .map((i) => (
+                      <option key={i.id} value={i.id}>{i.name}</option>
+                    ))}
+                </select>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  Child institutions must be linked to a mother institution.
+                </p>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium">
                 Allowed Email Domains{" "}
