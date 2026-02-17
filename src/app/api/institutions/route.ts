@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     }));
 
     const response = NextResponse.json({ institutions });
-    response.headers.set("Cache-Control", "private, max-age=300, stale-while-revalidate=600");
+    response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
     return response;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
