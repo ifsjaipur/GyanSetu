@@ -99,7 +99,15 @@ export default function NewInstitutionPage() {
         router.push(`/admin/institutions/${data.id}`);
       } else {
         const data = await res.json();
-        setError(data.error || "Failed to create institution");
+        if (data.details) {
+          const fieldErrors = data.details.map(
+            (d: { path?: (string | number)[]; message?: string }) =>
+              `${(d.path || []).join(".")}: ${d.message}`
+          ).join("\n");
+          setError(`Validation failed:\n${fieldErrors}`);
+        } else {
+          setError(data.error || "Failed to create institution");
+        }
       }
     } catch {
       setError("Network error");
@@ -120,7 +128,7 @@ export default function NewInstitutionPage() {
       <h1 className="text-2xl font-bold">Create New Institution</h1>
 
       {error && (
-        <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+        <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 whitespace-pre-line">
           {error}
         </div>
       )}
