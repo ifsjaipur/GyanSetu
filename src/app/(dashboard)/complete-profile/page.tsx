@@ -33,8 +33,11 @@ export default function CompleteProfilePage() {
 
   const [form, setForm] = useState({
     displayName: userData?.displayName || "",
+    gender: userData?.gender || "",
+    dateOfBirth: userData?.profile?.dateOfBirth || "",
     phone: userData?.phone || "",
     address: {
+      address: userData?.address?.address || "",
       city: userData?.address?.city || "",
       state: userData?.address?.state || "",
       country: userData?.address?.country || "",
@@ -43,6 +46,26 @@ export default function CompleteProfilePage() {
     consent: false,
   });
   const [showGuardian, setShowGuardian] = useState(false);
+
+  // Calculate age from DOB for guardian requirement
+  const userAge = useMemo(() => {
+    if (!form.dateOfBirth) return null;
+    const dob = new Date(form.dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    return age;
+  }, [form.dateOfBirth]);
+
+  const guardianRequired = userAge !== null && userAge < 13;
+
+  // Auto-expand guardian section when required
+  useEffect(() => {
+    if (guardianRequired) setShowGuardian(true);
+  }, [guardianRequired]);
   const [guardianForm, setGuardianForm] = useState({
     name: "",
     phone: "",
@@ -86,6 +109,7 @@ export default function CompleteProfilePage() {
       setForm((f) => ({
         ...f,
         address: {
+          ...f.address,
           city: f.address.city || geo.city,
           state: f.address.state || geo.state,
           country: f.address.country || geo.country,
@@ -131,8 +155,20 @@ export default function CompleteProfilePage() {
       setError("Name is required.");
       return;
     }
+    if (!form.gender) {
+      setError("Gender is required.");
+      return;
+    }
+    if (!form.dateOfBirth) {
+      setError("Date of birth is required.");
+      return;
+    }
     if (!form.phone.trim() || form.phone.length < 10) {
-      setError("A valid phone number is required.");
+      setError("A valid WhatsApp number is required.");
+      return;
+    }
+    if (!form.address.address.trim()) {
+      setError("Address is required.");
       return;
     }
     if (
@@ -141,11 +177,15 @@ export default function CompleteProfilePage() {
       !form.address.country.trim() ||
       !form.address.pincode.trim()
     ) {
-      setError("All address fields are required.");
+      setError("All address fields (city, state, country, pincode) are required.");
       return;
     }
     if (form.address.pincode.trim().length < 4) {
       setError("Pincode must be at least 4 characters.");
+      return;
+    }
+    if (guardianRequired && (!guardianForm.name.trim() || !guardianForm.phone.trim())) {
+      setError("Parent/Guardian name and phone are required for students under 13 years of age.");
       return;
     }
     if (!form.consent) {
@@ -160,21 +200,24 @@ export default function CompleteProfilePage() {
       const db = getClientDb();
       const updateData: Record<string, unknown> = {
         displayName: form.displayName.trim(),
+        gender: form.gender,
         phone: form.phone.trim(),
         address: {
+          address: form.address.address.trim(),
           city: form.address.city.trim(),
           state: form.address.state.trim(),
           country: form.address.country.trim(),
           pincode: form.address.pincode.trim(),
         },
+        "profile.dateOfBirth": form.dateOfBirth,
         consentGiven: true,
         consentGivenAt: serverTimestamp(),
         profileComplete: true,
         updatedAt: serverTimestamp(),
       };
 
-      // Include parent/guardian info if provided
-      if (showGuardian && guardianForm.name.trim() && guardianForm.phone.trim()) {
+      // Include parent/guardian info if provided (or required for under-13)
+      if ((showGuardian || guardianRequired) && guardianForm.name.trim() && guardianForm.phone.trim()) {
         updateData.parentGuardian = {
           name: guardianForm.name.trim(),
           phone: guardianForm.phone.trim(),
@@ -271,6 +314,45 @@ export default function CompleteProfilePage() {
             />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium" htmlFor="gender">
+                Gender *
+              </label>
+              <select
+                id="gender"
+                required
+                value={form.gender}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, gender: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              >
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium" htmlFor="dateOfBirth">
+                Date of Birth *
+              </label>
+              <input
+                id="dateOfBirth"
+                type="date"
+                required
+                value={form.dateOfBirth}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, dateOfBirth: e.target.value }))
+                }
+                max={new Date().toISOString().split("T")[0]}
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium" htmlFor="email">
               Email
@@ -286,7 +368,7 @@ export default function CompleteProfilePage() {
 
           <div>
             <label className="block text-sm font-medium" htmlFor="phone">
-              Phone Number *
+              WhatsApp Number *
             </label>
             <div className="mt-1">
               <PhoneInput
@@ -308,6 +390,31 @@ export default function CompleteProfilePage() {
                 </span>
               )}
             </legend>
+            <div>
+              <label className="block text-sm font-medium" htmlFor="address">
+                Address *
+              </label>
+              <input
+                id="address"
+                type="text"
+                required
+                value={form.address.address}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    address: { ...f.address, address: e.target.value },
+                  }))
+                }
+                onBlur={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    address: { ...f.address, address: trimWhitespace(e.target.value) },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                placeholder="House/Flat no., Street, Locality"
+              />
+            </div>
             <LocationFields
               value={{
                 country: form.address.country,
@@ -421,21 +528,32 @@ export default function CompleteProfilePage() {
 
           {/* Parent/Guardian Section */}
           <div className="border-t border-[var(--border)] pt-4">
-            <button
-              type="button"
-              onClick={() => setShowGuardian(!showGuardian)}
-              className="flex items-center gap-2 text-sm font-medium text-[var(--card-foreground)]"
-            >
-              <span>{showGuardian ? "▼" : "▶"}</span>
-              Parent / Guardian Information
-              <span className="text-xs font-normal text-[var(--muted-foreground)]">(Optional)</span>
-            </button>
+            {guardianRequired ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-[var(--card-foreground)]">
+                  Parent / Guardian Information *
+                </p>
+                <p className="text-xs text-amber-600">
+                  Parent/Guardian information is required for students under 13 years of age.
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowGuardian(!showGuardian)}
+                className="flex items-center gap-2 text-sm font-medium text-[var(--card-foreground)]"
+              >
+                <span>{showGuardian ? "▼" : "▶"}</span>
+                Parent / Guardian Information
+                <span className="text-xs font-normal text-[var(--muted-foreground)]">(Optional)</span>
+              </button>
+            )}
             {showGuardian && (
               <div className="mt-3 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium" htmlFor="guardianName">
-                      Name {showGuardian && guardianForm.phone ? "*" : ""}
+                      Name {guardianRequired || guardianForm.phone ? "*" : ""}
                     </label>
                     <input
                       id="guardianName"
@@ -472,7 +590,7 @@ export default function CompleteProfilePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium" htmlFor="guardianPhone">
-                    Phone {showGuardian && guardianForm.name ? "*" : ""}
+                    Phone {guardianRequired || guardianForm.name ? "*" : ""}
                   </label>
                   <div className="mt-1">
                     <PhoneInput

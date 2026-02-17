@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
@@ -19,9 +19,12 @@ export default function ProfileEditPage() {
 
   const [form, setForm] = useState({
     displayName: "",
+    gender: "",
+    dateOfBirth: "",
     phone: "",
     photoUrl: "",
     address: {
+      address: "",
       city: "",
       state: "",
       country: "",
@@ -29,6 +32,26 @@ export default function ProfileEditPage() {
     },
   });
   const [showGuardian, setShowGuardian] = useState(false);
+
+  // Calculate age from DOB for guardian requirement
+  const userAge = useMemo(() => {
+    if (!form.dateOfBirth) return null;
+    const dob = new Date(form.dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    return age;
+  }, [form.dateOfBirth]);
+
+  const guardianRequired = userAge !== null && userAge < 13;
+
+  // Auto-expand guardian section when required
+  useEffect(() => {
+    if (guardianRequired) setShowGuardian(true);
+  }, [guardianRequired]);
   const [guardianForm, setGuardianForm] = useState({
     name: "",
     phone: "",
@@ -43,9 +66,12 @@ export default function ProfileEditPage() {
     if (userData) {
       setForm({
         displayName: userData.displayName || "",
+        gender: userData.gender || "",
+        dateOfBirth: userData.profile?.dateOfBirth || "",
         phone: userData.phone || "",
         photoUrl: userData.photoUrl || firebaseUser?.photoURL || "",
         address: {
+          address: userData.address?.address || "",
           city: userData.address?.city || "",
           state: userData.address?.state || "",
           country: userData.address?.country || "",
@@ -74,7 +100,11 @@ export default function ProfileEditPage() {
       return;
     }
     if (!form.phone.trim() || form.phone.replace(/\D/g, "").length < 10) {
-      setMessage("Error: A valid phone number is required.");
+      setMessage("Error: A valid WhatsApp number is required.");
+      return;
+    }
+    if (guardianRequired && (!guardianForm.name.trim() || !guardianForm.phone.trim())) {
+      setMessage("Error: Parent/Guardian name and phone are required for students under 13 years of age.");
       return;
     }
 
@@ -85,18 +115,21 @@ export default function ProfileEditPage() {
       const db = getClientDb();
       const updateData: Record<string, unknown> = {
         displayName: form.displayName.trim(),
+        gender: form.gender || null,
         phone: form.phone.trim(),
         photoUrl: form.photoUrl.trim() || null,
         address: {
+          address: form.address.address.trim(),
           city: form.address.city.trim(),
           state: form.address.state.trim(),
           country: form.address.country.trim(),
           pincode: form.address.pincode.trim(),
         },
+        "profile.dateOfBirth": form.dateOfBirth || null,
         updatedAt: serverTimestamp(),
       };
 
-      if (showGuardian && guardianForm.name.trim() && guardianForm.phone.trim()) {
+      if ((showGuardian || guardianRequired) && guardianForm.name.trim() && guardianForm.phone.trim()) {
         updateData.parentGuardian = {
           name: guardianForm.name.trim(),
           phone: guardianForm.phone.trim(),
@@ -185,6 +218,38 @@ export default function ProfileEditPage() {
           />
         </div>
 
+        {/* Gender & DOB */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium">Gender</label>
+            <select
+              value={form.gender}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, gender: e.target.value }))
+              }
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            >
+              <option value="">Select gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+              <option value="prefer_not_to_say">Prefer not to say</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium">Date of Birth</label>
+            <input
+              type="date"
+              value={form.dateOfBirth}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, dateOfBirth: e.target.value }))
+              }
+              max={new Date().toISOString().split("T")[0]}
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+
         {/* Email (read-only) */}
         <div>
           <label className="block text-sm font-medium">Email</label>
@@ -198,7 +263,7 @@ export default function ProfileEditPage() {
 
         {/* Phone */}
         <div>
-          <label className="block text-sm font-medium">Phone Number *</label>
+          <label className="block text-sm font-medium">WhatsApp Number *</label>
           <div className="mt-1">
             <PhoneInput
               required
@@ -211,6 +276,28 @@ export default function ProfileEditPage() {
         {/* Address */}
         <div className="border-t border-[var(--border)] pt-4">
           <h3 className="mb-3 text-sm font-medium">Address</h3>
+          <div className="mb-3">
+            <label className="block text-sm font-medium">Address *</label>
+            <input
+              type="text"
+              required
+              value={form.address.address}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  address: { ...f.address, address: e.target.value },
+                }))
+              }
+              onBlur={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  address: { ...f.address, address: trimWhitespace(e.target.value) },
+                }))
+              }
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              placeholder="House/Flat no., Street, Locality"
+            />
+          </div>
           <LocationFields
             value={{
               country: form.address.country,
@@ -288,20 +375,31 @@ export default function ProfileEditPage() {
 
         {/* Parent / Guardian */}
         <div className="border-t border-[var(--border)] pt-4">
-          <button
-            type="button"
-            onClick={() => setShowGuardian(!showGuardian)}
-            className="flex items-center gap-2 text-sm font-medium"
-          >
-            <span>{showGuardian ? "\u25BC" : "\u25B6"}</span>
-            Parent / Guardian Information
-            <span className="text-xs font-normal text-[var(--muted-foreground)]">(Optional)</span>
-          </button>
+          {guardianRequired ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                Parent / Guardian Information *
+              </p>
+              <p className="text-xs text-amber-600">
+                Parent/Guardian information is required for students under 13 years of age.
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowGuardian(!showGuardian)}
+              className="flex items-center gap-2 text-sm font-medium"
+            >
+              <span>{showGuardian ? "\u25BC" : "\u25B6"}</span>
+              Parent / Guardian Information
+              <span className="text-xs font-normal text-[var(--muted-foreground)]">(Optional)</span>
+            </button>
+          )}
           {showGuardian && (
             <div className="mt-3 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium">Name</label>
+                  <label className="block text-sm font-medium">Name {guardianRequired ? "*" : ""}</label>
                   <input
                     type="text"
                     value={guardianForm.name}
@@ -326,7 +424,7 @@ export default function ProfileEditPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium">Phone</label>
+                <label className="block text-sm font-medium">Phone {guardianRequired ? "*" : ""}</label>
                 <div className="mt-1">
                   <PhoneInput
                     value={guardianForm.phone}

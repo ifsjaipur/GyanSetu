@@ -46,6 +46,7 @@ async function ensureUserDoc(uid: string, email: string, displayName: string, ph
       displayName: displayName || "",
       photoUrl: photoURL || null,
       phone: null,
+      gender: null,
       institutionId: matchedInstitutionId,
       activeInstitutionId: matchedInstitutionId || null,
       role: role || "student",

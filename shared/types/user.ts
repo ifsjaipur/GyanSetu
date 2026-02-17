@@ -2,6 +2,7 @@ import type { Timestamp } from "firebase/firestore";
 import type { UserRole } from "../enums/roles";
 
 export interface UserAddress {
+  address: string;
   city: string;
   state: string;
   country: string;
@@ -36,6 +37,7 @@ export interface User {
   displayName: string;
   photoUrl: string | null;
   phone: string | null;
+  gender: string | null;
   /** Primary/active institution — kept for backward compat with existing queries */
   institutionId: string;
   /** Currently active institution (same as institutionId, explicit field for multi-inst) */
