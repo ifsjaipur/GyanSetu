@@ -12,6 +12,11 @@ declare global {
   }
 }
 
+interface CourseInfo {
+  title: string;
+  pricing: { isFree: boolean; amount: number; currency: string };
+}
+
 export default function EnrollPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const router = useRouter();
@@ -19,14 +24,20 @@ export default function EnrollPage() {
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [course, setCourse] = useState<CourseInfo | null>(null);
 
-  // Check if already enrolled — redirect to learn page
+  // Check if already enrolled AND fetch course info
   useEffect(() => {
-    async function checkEnrollment() {
+    async function init() {
       try {
-        const res = await fetch(`/api/enrollments?courseId=${courseId}`);
-        if (res.ok) {
-          const data = await res.json();
+        const [enrollRes, courseRes] = await Promise.all([
+          fetch(`/api/enrollments?courseId=${courseId}`),
+          fetch(`/api/courses/${courseId}`),
+        ]);
+
+        // If already enrolled, redirect straight to learn page
+        if (enrollRes.ok) {
+          const data = await enrollRes.json();
           const enrollments = data.enrollments || data;
           const active = (Array.isArray(enrollments) ? enrollments : []).find(
             (e: { status: string }) => e.status === "active"
@@ -36,16 +47,23 @@ export default function EnrollPage() {
             return;
           }
         }
+
+        // Get course info for pricing display
+        if (courseRes.ok) {
+          const data = await courseRes.json();
+          setCourse(data.course || data);
+        }
       } catch {
         // Continue to enrollment flow
       }
       setChecking(false);
     }
-    if (courseId) checkEnrollment();
+    if (courseId) init();
   }, [courseId, router]);
 
-  // Load Razorpay script
+  // Load Razorpay script only for paid courses
   useEffect(() => {
+    if (course?.pricing?.isFree) return; // Skip for free courses
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
@@ -53,7 +71,9 @@ export default function EnrollPage() {
     return () => {
       document.body.removeChild(script);
     };
-  }, []);
+  }, [course]);
+
+  const isFree = course?.pricing?.isFree;
 
   const handleEnroll = useCallback(async () => {
     setLoading(true);
@@ -69,6 +89,11 @@ export default function EnrollPage() {
 
       if (!orderRes.ok) {
         const data = await orderRes.json();
+        // If already enrolled (409), redirect to learn page
+        if (orderRes.status === 409) {
+          router.replace(`/courses/${courseId}/learn`);
+          return;
+        }
         setError(data.error || "Failed to create order");
         setLoading(false);
         return;
@@ -76,10 +101,10 @@ export default function EnrollPage() {
 
       const orderData = await orderRes.json();
 
-      // Free course — already enrolled
+      // Free course — already enrolled server-side
       if (orderData.free) {
         setSuccess(true);
-        setTimeout(() => router.push(`/courses/${courseId}/learn`), 1500);
+        setTimeout(() => router.replace(`/courses/${courseId}/learn`), 1500);
         return;
       }
 
@@ -111,7 +136,7 @@ export default function EnrollPage() {
 
             if (verifyRes.ok) {
               setSuccess(true);
-              setTimeout(() => router.push(`/courses/${courseId}/learn`), 1500);
+              setTimeout(() => router.replace(`/courses/${courseId}/learn`), 1500);
             } else {
               setError("Payment verification failed. Contact support.");
             }
@@ -165,9 +190,13 @@ export default function EnrollPage() {
   return (
     <div className="flex min-h-[50vh] items-center justify-center">
       <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-8 text-center">
-        <h1 className="text-xl font-bold">Complete Enrollment</h1>
+        <h1 className="text-xl font-bold">
+          {isFree ? "Enroll in Course" : "Complete Enrollment"}
+        </h1>
         <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-          Click below to proceed with payment and enrollment.
+          {isFree
+            ? "This course is free. Click below to enroll and start learning."
+            : "Click below to proceed with payment and enrollment."}
         </p>
 
         {error && (
@@ -182,7 +211,11 @@ export default function EnrollPage() {
           className="mt-6 w-full rounded-lg px-6 py-3 text-sm font-medium text-white disabled:opacity-50"
           style={{ backgroundColor: "var(--brand-primary)" }}
         >
-          {loading ? "Processing..." : "Proceed to Payment"}
+          {loading
+            ? "Processing..."
+            : isFree
+              ? "Enroll for Free"
+              : "Proceed to Payment"}
         </button>
 
         <button

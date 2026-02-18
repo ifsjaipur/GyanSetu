@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInstitution } from "@/contexts/InstitutionContext";
@@ -62,34 +62,45 @@ export default function ProfileEditPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Fetch fresh user data directly from Firestore (avoid stale AuthContext cache)
   useEffect(() => {
-    if (userData) {
-      setForm({
-        displayName: userData.displayName || "",
-        gender: userData.gender || "",
-        dateOfBirth: userData.profile?.dateOfBirth || "",
-        phone: userData.phone || "",
-        photoUrl: userData.photoUrl || firebaseUser?.photoURL || "",
-        address: {
-          address: userData.address?.address || "",
-          city: userData.address?.city || "",
-          state: userData.address?.state || "",
-          country: userData.address?.country || "",
-          pincode: userData.address?.pincode || "",
-        },
-      });
-      if (userData.parentGuardian) {
-        setShowGuardian(true);
-        setGuardianForm({
-          name: userData.parentGuardian.name || "",
-          phone: userData.parentGuardian.phone || "",
-          email: userData.parentGuardian.email || "",
-          address: userData.parentGuardian.address || "",
-          relation: userData.parentGuardian.relation || "father",
-        });
+    async function loadProfile() {
+      if (!firebaseUser) return;
+      try {
+        const userDoc = await getDoc(doc(getClientDb(), "users", firebaseUser.uid));
+        const data = userDoc.data();
+        if (data) {
+          setForm({
+            displayName: data.displayName || "",
+            gender: data.gender || "",
+            dateOfBirth: data.profile?.dateOfBirth || "",
+            phone: data.phone || "",
+            photoUrl: data.photoUrl || firebaseUser.photoURL || "",
+            address: {
+              address: data.address?.address || "",
+              city: data.address?.city || "",
+              state: data.address?.state || "",
+              country: data.address?.country || "",
+              pincode: data.address?.pincode || "",
+            },
+          });
+          if (data.parentGuardian) {
+            setShowGuardian(true);
+            setGuardianForm({
+              name: data.parentGuardian.name || "",
+              phone: data.parentGuardian.phone || "",
+              email: data.parentGuardian.email || "",
+              address: data.parentGuardian.address || "",
+              relation: data.parentGuardian.relation || "father",
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load profile:", err);
       }
     }
-  }, [userData, firebaseUser?.photoURL]);
+    loadProfile();
+  }, [firebaseUser]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
