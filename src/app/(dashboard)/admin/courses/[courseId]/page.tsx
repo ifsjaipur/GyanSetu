@@ -55,7 +55,7 @@ export default function AdminCourseEditPage() {
   useEffect(() => {
     async function fetchCourse() {
       try {
-        const res = await fetch(`/api/courses/${courseId}`);
+        const res = await fetch(`/api/courses/${courseId}`, { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
           setCourse(data);
@@ -135,7 +135,15 @@ export default function AdminCourseEditPage() {
       });
 
       if (res.ok) {
-        setCourse({ ...course, status: newStatus });
+        // Re-fetch to get the latest data (status, enrollmentCount, etc.)
+        const freshRes = await fetch(`/api/courses/${courseId}`, { cache: "no-store" });
+        if (freshRes.ok) {
+          const freshData = await freshRes.json();
+          setCourse(freshData);
+          setSelectedInstructors(freshData.instructorIds || []);
+        } else {
+          setCourse({ ...course, status: newStatus });
+        }
         setMessage(`Status changed to ${newStatus}`);
       } else {
         const data = await res.json();

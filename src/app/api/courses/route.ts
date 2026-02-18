@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.json({ courses });
-    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");
+    response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
     return response;
   } catch (err) {
     console.error("GET /api/courses error:", err);

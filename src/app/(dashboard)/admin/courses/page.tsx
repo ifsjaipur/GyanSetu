@@ -33,7 +33,7 @@ export default function AdminCoursesPage() {
   useEffect(() => {
     async function fetchCourses() {
       try {
-        const res = await fetch("/api/courses");
+        const res = await fetch("/api/courses", { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
           setCourses(data.courses);

@@ -78,7 +78,7 @@ export async function GET(
       ...course,
       modules,
     });
-    response.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
+    response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
     return response;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
