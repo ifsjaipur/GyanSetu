@@ -20,6 +20,11 @@ interface InstitutionDetail {
     footerText: string;
     institutionTagline: string;
   };
+  googleWorkspace?: {
+    adminEmail: string;
+    customerDomain: string;
+    classroomTeacherEmail: string;
+  };
   settings: {
     defaultCourseAccessDays: number;
     enableSelfRegistration: boolean;
@@ -93,6 +98,7 @@ export default function InstitutionEditPage() {
           parentInstitutionId: inst.parentInstitutionId,
           allowedEmailDomains,
           branding: inst.branding,
+          googleWorkspace: inst.googleWorkspace,
           settings: inst.settings,
           contactInfo: inst.contactInfo,
           location: inst.location,
@@ -380,6 +386,78 @@ export default function InstitutionEditPage() {
                 />
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Google Workspace */}
+        <section className="rounded-lg border border-[var(--border)] p-4">
+          <h2 className="font-semibold">Google Workspace</h2>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Required for Google Meet auto-creation and Google Classroom integration.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium">
+                Admin Email *
+                <span className="ml-1 font-normal text-[var(--muted-foreground)]">
+                  (Google Workspace admin who owns Calendar events)
+                </span>
+              </label>
+              <input
+                type="email"
+                value={inst.googleWorkspace?.adminEmail || ""}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    googleWorkspace: {
+                      adminEmail: e.target.value,
+                      customerDomain: inst.googleWorkspace?.customerDomain || "",
+                      classroomTeacherEmail: inst.googleWorkspace?.classroomTeacherEmail || "",
+                    },
+                  })
+                }
+                placeholder="admin@yourdomain.com"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">Customer Domain</label>
+              <input
+                type="text"
+                value={inst.googleWorkspace?.customerDomain || ""}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    googleWorkspace: {
+                      adminEmail: inst.googleWorkspace?.adminEmail || "",
+                      customerDomain: e.target.value,
+                      classroomTeacherEmail: inst.googleWorkspace?.classroomTeacherEmail || "",
+                    },
+                  })
+                }
+                placeholder="yourdomain.com"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">Classroom Teacher Email</label>
+              <input
+                type="email"
+                value={inst.googleWorkspace?.classroomTeacherEmail || ""}
+                onChange={(e) =>
+                  setInst({
+                    ...inst,
+                    googleWorkspace: {
+                      adminEmail: inst.googleWorkspace?.adminEmail || "",
+                      customerDomain: inst.googleWorkspace?.customerDomain || "",
+                      classroomTeacherEmail: e.target.value,
+                    },
+                  })
+                }
+                placeholder="teacher@yourdomain.com"
+                className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+              />
+            </div>
           </div>
         </section>
       </div>
