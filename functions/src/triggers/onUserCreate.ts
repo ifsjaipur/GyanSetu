@@ -30,7 +30,6 @@ export const onUserCreate = functions.region("asia-south1").auth.user().onCreate
   }
 
   const emailDomain = user.email.split("@")[1];
-  const role = "student";
 
   // Generic email providers should NOT auto-assign to an institution
   // even if they are in allowedEmailDomains (those users must choose explicitly)
@@ -55,6 +54,9 @@ export const onUserCreate = functions.region("asia-south1").auth.user().onCreate
     }
   }
 
+  // Domain users get "instructor" role; external users get "student"
+  // This matches the session route's ensureUserDoc() to eliminate race conditions
+  const role = matchedInstitutionId ? "instructor" : "student";
   const isExternal = !matchedInstitutionId;
 
   // Set custom claims

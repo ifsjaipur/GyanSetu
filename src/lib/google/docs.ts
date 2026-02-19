@@ -3,8 +3,8 @@ import "server-only";
 import { google } from "googleapis";
 import { getGoogleAuthClient } from "./auth-client";
 
-export function getDocsClient(adminEmail: string) {
-  const auth = getGoogleAuthClient(adminEmail, [
+export function getDocsClient() {
+  const auth = getGoogleAuthClient([
     "https://www.googleapis.com/auth/documents",
   ]);
   return google.docs({ version: "v1", auth });
@@ -15,11 +15,10 @@ export function getDocsClient(adminEmail: string) {
  * Placeholders use the format {{PLACEHOLDER_NAME}}.
  */
 export async function mergeDocTemplate(
-  adminEmail: string,
   docId: string,
   replacements: Record<string, string>
 ) {
-  const docs = getDocsClient(adminEmail);
+  const docs = getDocsClient();
 
   const requests = Object.entries(replacements).map(([placeholder, value]) => ({
     replaceAllText: {

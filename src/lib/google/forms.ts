@@ -3,8 +3,8 @@ import "server-only";
 import { google, type forms_v1 } from "googleapis";
 import { getGoogleAuthClient } from "./auth-client";
 
-function getFormsClient(adminEmail: string): forms_v1.Forms {
-  const auth = getGoogleAuthClient(adminEmail, [
+function getFormsClient(): forms_v1.Forms {
+  const auth = getGoogleAuthClient([
     "https://www.googleapis.com/auth/forms.responses.readonly",
   ]);
   return google.forms({ version: "v1", auth });
@@ -14,10 +14,9 @@ function getFormsClient(adminEmail: string): forms_v1.Forms {
  * Fetch all responses for a Google Form.
  */
 export async function getFormResponses(
-  adminEmail: string,
   formId: string
 ): Promise<forms_v1.Schema$FormResponse[]> {
-  const forms = getFormsClient(adminEmail);
+  const forms = getFormsClient();
   const res = await forms.forms.responses.list({ formId });
   return res.data.responses || [];
 }
@@ -26,10 +25,9 @@ export async function getFormResponses(
  * Fetch form structure (questions, correct answers for quizzes).
  */
 export async function getFormDetails(
-  adminEmail: string,
   formId: string
 ): Promise<forms_v1.Schema$Form> {
-  const forms = getFormsClient(adminEmail);
+  const forms = getFormsClient();
   const res = await forms.forms.get({ formId });
   return res.data;
 }

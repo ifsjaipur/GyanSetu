@@ -1,7 +1,6 @@
 export type {
   Institution,
   InstitutionBranding,
-  InstitutionGoogleWorkspace,
   InstitutionRazorpay,
   InstitutionZoom,
   InstitutionSettings,

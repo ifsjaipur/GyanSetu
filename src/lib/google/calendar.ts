@@ -1,10 +1,10 @@
 import "server-only";
 
 import { google } from "googleapis";
-import { getGoogleAuthClient } from "./auth-client";
+import { getGoogleAuthClient, getWorkspaceAdminEmail } from "./auth-client";
 
-export function getCalendarClient(adminEmail: string) {
-  const auth = getGoogleAuthClient(adminEmail, [
+export function getCalendarClient() {
+  const auth = getGoogleAuthClient([
     "https://www.googleapis.com/auth/calendar.events",
   ]);
   return google.calendar({ version: "v3", auth });
@@ -13,20 +13,18 @@ export function getCalendarClient(adminEmail: string) {
 /**
  * Create a Calendar event with an auto-generated Google Meet link.
  */
-export async function createMeetSession(
-  adminEmail: string,
-  params: {
-    summary: string;
-    description: string;
-    startTime: string; // ISO 8601
-    endTime: string;
-    timeZone: string;
-    attendeeEmails: string[];
-    coHostEmails?: string[]; // Instructors who can manage participants
-    requestId: string; // Unique ID for idempotency
-  }
-) {
-  const calendar = getCalendarClient(adminEmail);
+export async function createMeetSession(params: {
+  summary: string;
+  description: string;
+  startTime: string; // ISO 8601
+  endTime: string;
+  timeZone: string;
+  attendeeEmails: string[];
+  coHostEmails?: string[]; // Instructors who can manage participants
+  requestId: string; // Unique ID for idempotency
+}) {
+  const calendar = getCalendarClient();
+  const calendarId = getWorkspaceAdminEmail();
 
   // Build attendee list: co-hosts (instructors) first, then students
   const attendees = [
@@ -35,7 +33,7 @@ export async function createMeetSession(
   ];
 
   const event = await calendar.events.insert({
-    calendarId: adminEmail,
+    calendarId,
     conferenceDataVersion: 1,
     sendUpdates: "all",
     requestBody: {
@@ -74,13 +72,10 @@ export async function createMeetSession(
 /**
  * Delete a Calendar event by ID.
  */
-export async function deleteCalendarEvent(
-  adminEmail: string,
-  calendarEventId: string
-) {
-  const calendar = getCalendarClient(adminEmail);
+export async function deleteCalendarEvent(calendarEventId: string) {
+  const calendar = getCalendarClient();
   await calendar.events.delete({
-    calendarId: adminEmail,
+    calendarId: getWorkspaceAdminEmail(),
     eventId: calendarEventId,
   });
 }

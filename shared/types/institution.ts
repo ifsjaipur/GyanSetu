@@ -11,13 +11,6 @@ export interface InstitutionBranding {
   institutionTagline: string;
 }
 
-export interface InstitutionGoogleWorkspace {
-  customerDomain: string;
-  adminEmail: string;
-  serviceAccountKeyRef: string;
-  classroomTeacherEmail: string;
-}
-
 export interface InstitutionRazorpay {
   keyId: string;
   keySecretRef: string;
@@ -80,7 +73,6 @@ export interface Institution {
   inviteCode: string;
   location: InstitutionLocation | null;
   branding: InstitutionBranding;
-  googleWorkspace: InstitutionGoogleWorkspace;
   razorpay: InstitutionRazorpay;
   whatsapp: InstitutionWhatsApp | null;
   zoom: InstitutionZoom | null;

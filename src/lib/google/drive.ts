@@ -3,8 +3,8 @@ import "server-only";
 import { google } from "googleapis";
 import { getGoogleAuthClient } from "./auth-client";
 
-export function getDriveClient(adminEmail: string) {
-  const auth = getGoogleAuthClient(adminEmail, [
+export function getDriveClient() {
+  const auth = getGoogleAuthClient([
     "https://www.googleapis.com/auth/drive.file",
   ]);
   return google.drive({ version: "v3", auth });
@@ -14,12 +14,11 @@ export function getDriveClient(adminEmail: string) {
  * Copy a Google Drive file (used for certificate template → new certificate).
  */
 export async function copyDriveFile(
-  adminEmail: string,
   sourceFileId: string,
   newName: string,
   destinationFolderId?: string
 ) {
-  const drive = getDriveClient(adminEmail);
+  const drive = getDriveClient();
 
   const response = await drive.files.copy({
     fileId: sourceFileId,
@@ -35,11 +34,8 @@ export async function copyDriveFile(
 /**
  * Export a Google Doc as PDF.
  */
-export async function exportAsPdf(
-  adminEmail: string,
-  fileId: string
-) {
-  const drive = getDriveClient(adminEmail);
+export async function exportAsPdf(fileId: string) {
+  const drive = getDriveClient();
 
   const response = await drive.files.export(
     { fileId, mimeType: "application/pdf" },
@@ -52,16 +48,13 @@ export async function exportAsPdf(
 /**
  * Upload a file to Google Drive.
  */
-export async function uploadToDrive(
-  adminEmail: string,
-  params: {
-    name: string;
-    mimeType: string;
-    content: Buffer;
-    folderId?: string;
-  }
-) {
-  const drive = getDriveClient(adminEmail);
+export async function uploadToDrive(params: {
+  name: string;
+  mimeType: string;
+  content: Buffer;
+  folderId?: string;
+}) {
+  const drive = getDriveClient();
   const { Readable } = await import("stream");
 
   const response = await drive.files.create({
@@ -83,11 +76,8 @@ export async function uploadToDrive(
 /**
  * Set a file to "anyone with the link can view".
  */
-export async function setPublicViewAccess(
-  adminEmail: string,
-  fileId: string
-) {
-  const drive = getDriveClient(adminEmail);
+export async function setPublicViewAccess(fileId: string) {
+  const drive = getDriveClient();
 
   await drive.permissions.create({
     fileId,

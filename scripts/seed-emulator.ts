@@ -47,12 +47,6 @@ async function seed() {
       footerText: "Example Institution",
       institutionTagline: "Empowering Education",
     },
-    googleWorkspace: {
-      customerDomain: "",
-      adminEmail: "",
-      serviceAccountKeyRef: "",
-      classroomTeacherEmail: "",
-    },
     razorpay: {
       keyId: "",
       keySecretRef: "",

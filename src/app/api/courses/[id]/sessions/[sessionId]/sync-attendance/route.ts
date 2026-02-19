@@ -118,15 +118,7 @@ export async function POST(
       syncSource = "Zoom";
     } else {
       // Google Meet attendance sync (default)
-      const adminEmail = institution.googleWorkspace?.adminEmail;
-      if (!adminEmail) {
-        return NextResponse.json(
-          { error: "Google Workspace admin email not configured" },
-          { status: 500 }
-        );
-      }
       attendance = await getMeetAttendance(
-        adminEmail,
         sessionData.meetLink,
         sessionStartTime,
         sessionEndTime,

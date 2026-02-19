@@ -3,8 +3,8 @@ import "server-only";
 import { google } from "googleapis";
 import { getGoogleAuthClient } from "./auth-client";
 
-function getMeetClient(adminEmail: string) {
-  const auth = getGoogleAuthClient(adminEmail, [
+function getMeetClient() {
+  const auth = getGoogleAuthClient([
     "https://www.googleapis.com/auth/meetings.space.readonly",
   ]);
   return google.meet({ version: "v2", auth });
@@ -22,12 +22,10 @@ interface MeetParticipant {
  * Returns the most recent conference record for the meeting.
  */
 export async function getConferenceRecord(
-  adminEmail: string,
   meetCode: string
 ): Promise<string | null> {
-  const meet = getMeetClient(adminEmail);
+  const meet = getMeetClient();
 
-  // List conference records filtered by space
   // Meet code format: xxx-xxxx-xxx or full URL
   const code = meetCode
     .replace(/^https?:\/\/meet\.google\.com\//, "")
@@ -61,10 +59,9 @@ export async function getConferenceRecord(
  * Get participants from a conference record with their join/leave times.
  */
 export async function getMeetParticipants(
-  adminEmail: string,
   conferenceRecordName: string
 ): Promise<MeetParticipant[]> {
-  const meet = getMeetClient(adminEmail);
+  const meet = getMeetClient();
 
   const participants: MeetParticipant[] = [];
   let pageToken: string | undefined;
@@ -125,7 +122,6 @@ export async function getMeetParticipants(
  * Matches participants to enrolled students by email.
  */
 export async function getMeetAttendance(
-  adminEmail: string,
   meetLink: string,
   sessionStartTime: string,
   sessionEndTime: string,
@@ -143,10 +139,7 @@ export async function getMeetAttendance(
     .replace(/^https?:\/\/meet\.google\.com\//, "")
     .trim();
 
-  const conferenceRecordName = await getConferenceRecord(
-    adminEmail,
-    meetCode
-  );
+  const conferenceRecordName = await getConferenceRecord(meetCode);
 
   // Build result: all enrolled students start as absent
   const result = enrolledEmails.map((student) => ({
@@ -162,10 +155,7 @@ export async function getMeetAttendance(
     return result;
   }
 
-  const participants = await getMeetParticipants(
-    adminEmail,
-    conferenceRecordName
-  );
+  const participants = await getMeetParticipants(conferenceRecordName);
 
   // Calculate session duration for late threshold
   const sessionStart = new Date(sessionStartTime);

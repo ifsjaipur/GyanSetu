@@ -103,7 +103,6 @@ export async function POST(
     }
 
     const institution = instDoc.data()!;
-    const adminEmail = institution.googleWorkspace?.adminEmail;
 
     // Validate required credentials for auto-create platforms
     if (platform === "google_meet") {
@@ -113,9 +112,9 @@ export async function POST(
           { status: 400 }
         );
       }
-      if (!adminEmail) {
+      if (!process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL) {
         return NextResponse.json(
-          { error: "Google Workspace admin email is not configured for this institution. Set it in institution settings." },
+          { error: "GOOGLE_WORKSPACE_ADMIN_EMAIL is not configured. Set it in environment variables." },
           { status: 400 }
         );
       }
@@ -170,7 +169,7 @@ export async function POST(
     if (platform === "google_meet") {
       try {
         const tz = timeZone || "Asia/Kolkata";
-        const result = await createMeetSession(adminEmail!, {
+        const result = await createMeetSession({
           summary: `${course.title}: ${topic}`,
           description: `Bootcamp session for ${course.title}`,
           startTime: `${sessionDate}T${startTime}:00`,
@@ -339,12 +338,9 @@ export async function DELETE(
 
     // Delete Calendar event if it exists
     if (sessionData.calendarEventId) {
-      const instDoc = await db.collection("institutions").doc(course.institutionId).get();
-      const adminEmail = instDoc.data()?.googleWorkspace?.adminEmail;
-
-      if (getServiceAccountCredentials() && adminEmail) {
+      if (getServiceAccountCredentials() && process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL) {
         try {
-          await deleteCalendarEvent(adminEmail, sessionData.calendarEventId);
+          await deleteCalendarEvent(sessionData.calendarEventId);
         } catch (err) {
           console.error("Failed to delete calendar event:", err);
         }

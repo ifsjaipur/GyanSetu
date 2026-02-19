@@ -67,16 +67,8 @@ export async function POST(request: NextRequest) {
     const course = courseDoc.data()!;
     const institution = instDoc.data()!;
 
-    const adminEmail = institution.googleWorkspace?.adminEmail;
     const templateDocId = institution.settings?.certificateTemplateDocId;
     const certFolderId = institution.settings?.certificateFolderId;
-
-    if (!adminEmail) {
-      return NextResponse.json(
-        { error: "Google Workspace admin email not configured" },
-        { status: 500 }
-      );
-    }
 
     if (!templateDocId) {
       return NextResponse.json(
@@ -100,7 +92,6 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Copy template
     const copiedDoc = await copyDriveFile(
-      adminEmail,
       templateDocId,
       `Certificate - ${user.displayName} - ${course.title}`,
       certFolderId || undefined
@@ -109,7 +100,7 @@ export async function POST(request: NextRequest) {
     const newDocId = copiedDoc.id!;
 
     // Step 2: Merge template fields
-    await mergeDocTemplate(adminEmail, newDocId, {
+    await mergeDocTemplate(newDocId, {
       STUDENT_NAME: user.displayName || user.email,
       COURSE_NAME: course.title,
       INSTITUTION_NAME: institution.name,
@@ -120,10 +111,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 3: Export as PDF
-    const pdfBuffer = await exportAsPdf(adminEmail, newDocId);
+    const pdfBuffer = await exportAsPdf(newDocId);
 
     // Step 4: Upload PDF to Drive
-    const pdfFile = await uploadToDrive(adminEmail, {
+    const pdfFile = await uploadToDrive({
       name: `${certificateId}.pdf`,
       mimeType: "application/pdf",
       content: Buffer.from(pdfBuffer),
@@ -131,7 +122,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 5: Make PDF publicly accessible
-    await setPublicViewAccess(adminEmail, pdfFile.id!);
+    await setPublicViewAccess(pdfFile.id!);
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const publicVerificationUrl = `${appUrl}/verify/${certificateId}`;

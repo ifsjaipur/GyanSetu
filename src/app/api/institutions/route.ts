@@ -111,12 +111,6 @@ export async function POST(request: NextRequest) {
         lng: null,
         timezone: "Asia/Kolkata",
       },
-      googleWorkspace: {
-        customerDomain: "",
-        adminEmail: "",
-        serviceAccountKeyRef: "",
-        classroomTeacherEmail: "",
-      },
       razorpay: {
         keyId: "",
         keySecretRef: "",

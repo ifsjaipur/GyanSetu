@@ -89,12 +89,6 @@ export const updateInstitutionSchema = z.object({
     lng: z.number().min(-180).max(180).nullable().optional(),
     timezone: z.string().max(50).optional(),
   }).optional(),
-  googleWorkspace: z.object({
-    adminEmail: z.union([z.email(), z.literal("")]).optional(),
-    customerDomain: z.string().max(100).optional(),
-    classroomTeacherEmail: z.union([z.email(), z.literal("")]).optional(),
-    serviceAccountKeyRef: z.string().max(200).optional(),
-  }).optional(),
   settings: z.object({
     defaultCourseAccessDays: z.number().int().min(1).max(365).optional(),
     enableSelfRegistration: z.boolean().optional(),

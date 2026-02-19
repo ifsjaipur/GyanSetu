@@ -3,6 +3,20 @@ import "server-only";
 import { google, type Auth } from "googleapis";
 
 /**
+ * Returns the Google Workspace admin email used for domain-wide delegation.
+ * All Google API calls impersonate this user.
+ */
+export function getWorkspaceAdminEmail(): string {
+  const email = process.env.GOOGLE_WORKSPACE_ADMIN_EMAIL;
+  if (!email) {
+    throw new Error(
+      "GOOGLE_WORKSPACE_ADMIN_EMAIL is not set. Configure it in your environment variables."
+    );
+  }
+  return email;
+}
+
+/**
  * Returns Google service account credentials from environment variables.
  * Uses GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.
  */
@@ -19,12 +33,9 @@ export function getServiceAccountCredentials(): {
 
 /**
  * Creates a Google Auth client using service account with domain-wide delegation.
- * Used server-side only (API routes and Cloud Functions).
+ * Impersonates the GOOGLE_WORKSPACE_ADMIN_EMAIL for all API calls.
  */
-export function getGoogleAuthClient(
-  adminEmail: string,
-  scopes: string[]
-): Auth.GoogleAuth {
+export function getGoogleAuthClient(scopes: string[]): Auth.GoogleAuth {
   const credentials = getServiceAccountCredentials();
   if (!credentials) {
     throw new Error(
@@ -35,7 +46,7 @@ export function getGoogleAuthClient(
     credentials,
     scopes,
     clientOptions: {
-      subject: adminEmail,
+      subject: getWorkspaceAdminEmail(),
     },
   });
 }

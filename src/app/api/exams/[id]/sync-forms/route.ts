@@ -45,25 +45,8 @@ export async function POST(
       );
     }
 
-    // Get institution config for service account
-    const instDoc = await db.collection("institutions").doc(exam.institutionId).get();
-    if (!instDoc.exists) {
-      return NextResponse.json({ error: "Institution not found" }, { status: 500 });
-    }
-
-    const institution = instDoc.data()!;
-    const adminEmail = institution.googleWorkspace?.adminEmail;
-
-    if (!adminEmail) {
-      return NextResponse.json(
-        { error: "Google Workspace admin email not configured" },
-        { status: 500 }
-      );
-    }
-
     // Fetch form responses
     const responses = await getFormResponses(
-      adminEmail,
       exam.googleFormsConfig.formId
     );
 
