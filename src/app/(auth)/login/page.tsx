@@ -84,13 +84,13 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#020c1b]">
-      {/* Left panel: 3D Globe (hidden on mobile) */}
-      <div className="hidden flex-1 bg-black lg:block">
+      {/* Left panel: 3D Globe (desktop only) */}
+      <div className="hidden h-full flex-1 bg-black lg:block">
         <DynamicLoginGlobe />
       </div>
 
-      {/* Right panel: Login form */}
-      <div className="flex w-full flex-col justify-center bg-[#0a192f] shadow-[-10px_0_30px_rgba(0,0,0,0.5)] lg:w-[480px]">
+      {/* Right panel: Login form — full screen on mobile, fixed width on desktop */}
+      <div className="flex h-full min-h-0 w-full shrink-0 flex-col justify-center bg-[#0a192f] lg:w-[480px] lg:shadow-[-10px_0_30px_rgba(0,0,0,0.5)]">
         <Suspense
           fallback={
             <div className="flex items-center justify-center text-[#8892b0]">
