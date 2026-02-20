@@ -136,8 +136,8 @@ export default function LoginGlobe() {
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
-      {/* Overlay text */}
-      <div className="pointer-events-none absolute left-10 top-10 z-10">
+      {/* Overlay text — desktop only (mobile has logo in the login form above) */}
+      <div className="pointer-events-none absolute left-10 top-10 z-10 hidden lg:block">
         <h1 className="text-2xl font-extrabold uppercase tracking-wide text-[#64ffda]">
           {APP_NAME}
         </h1>
