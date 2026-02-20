@@ -47,31 +47,63 @@ export default function LoginGlobe() {
       .then((data: GeoJson) => setCountries(data.features))
       .catch(() => {});
 
-    // Detect user location
-    fetch("https://ipapi.co/json/")
-      .then((res) => res.json())
-      .then((data) => {
-        setUserCountry(data.country_code || "");
-        setLocationName(data.country_name || "Global Access Mode");
+    // Detect user location — try multiple APIs with fallback
+    async function detectLocation() {
+      const apis = [
+        {
+          url: "https://ipapi.co/json/",
+          parse: (d: Record<string, string>) => ({
+            code: d.country_code,
+            name: d.country_name,
+            lat: Number(d.latitude),
+            lng: Number(d.longitude),
+          }),
+        },
+        {
+          url: "https://ip-api.com/json/?fields=country,countryCode,lat,lon",
+          parse: (d: Record<string, string>) => ({
+            code: d.countryCode,
+            name: d.country,
+            lat: Number(d.lat),
+            lng: Number(d.lon),
+          }),
+        },
+      ];
 
-        // Fly to user's location after a short delay
-        setTimeout(() => {
-          globeRef.current?.pointOfView(
-            { lat: data.latitude, lng: data.longitude, altitude: 1.5 },
-            4000
-          );
-        }, 1000);
-      })
-      .catch(() => {
-        setLocationName("Global Access Mode");
-        // Default fly to India
-        setTimeout(() => {
-          globeRef.current?.pointOfView(
-            { lat: 20, lng: 77, altitude: 2.0 },
-            2000
-          );
-        }, 1000);
-      });
+      for (const api of apis) {
+        try {
+          const res = await fetch(api.url);
+          if (!res.ok) continue;
+          const data = await res.json();
+          const loc = api.parse(data);
+          if (loc.code && loc.lat) {
+            setUserCountry(loc.code);
+            setLocationName(loc.name || "Global Access Mode");
+            setTimeout(() => {
+              globeRef.current?.pointOfView(
+                { lat: loc.lat, lng: loc.lng, altitude: 1.5 },
+                4000
+              );
+            }, 1000);
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      // All APIs failed — default to India
+      setUserCountry("IN");
+      setLocationName("India");
+      setTimeout(() => {
+        globeRef.current?.pointOfView(
+          { lat: 20, lng: 77, altitude: 2.0 },
+          2000
+        );
+      }, 1000);
+    }
+
+    detectLocation();
   }, []);
 
   // Setup auto-rotate + disable zoom once globe is ready
