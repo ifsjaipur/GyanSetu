@@ -30,16 +30,17 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex w-full flex-col justify-center px-8 sm:px-12">
-      <div className="mb-10">
-        <h2 className="text-3xl font-bold text-[#ccd6f6]">Welcome Back</h2>
-        <p className="mt-2 text-sm text-[#8892b0]">
-          Sign in with your Google account to access the portal.
-        </p>
-      </div>
+    <div className="flex w-full flex-col items-center px-6">
+      {/* Logo / App Name */}
+      <h1 className="text-2xl font-extrabold uppercase tracking-wide text-[#64ffda]">
+        {APP_NAME}
+      </h1>
+      <p className="mt-2 text-sm text-[#8892b0]">
+        Sign in to access the portal
+      </p>
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-400">
+        <div className="mt-4 w-full max-w-xs rounded-lg bg-red-500/10 p-3 text-center text-sm text-red-400">
           {error}
         </div>
       )}
@@ -47,7 +48,7 @@ function LoginForm() {
       <button
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="flex w-full items-center justify-center gap-3 rounded-lg border border-[#8892b0]/20 bg-white/5 px-4 py-4 font-medium text-[#ccd6f6] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#64ffda]/40 hover:bg-white/10 hover:shadow-[0_5px_15px_rgba(100,255,218,0.15)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-6 flex w-full max-w-xs items-center justify-center gap-3 rounded-lg border border-[#8892b0]/20 bg-white/5 px-4 py-3 text-sm font-medium text-[#ccd6f6] transition-all hover:-translate-y-0.5 hover:border-[#64ffda]/40 hover:bg-white/10 hover:shadow-[0_5px_15px_rgba(100,255,218,0.15)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24">
           <path
@@ -70,7 +71,7 @@ function LoginForm() {
         {loading ? "Signing in..." : "Continue with Google"}
       </button>
 
-      <p className="mt-8 text-center text-xs text-[#8892b0]/60">
+      <p className="mt-4 text-center text-xs text-[#8892b0]/60">
         By signing in, you agree to our Terms of Service and Privacy Policy.
       </p>
     </div>
@@ -79,14 +80,12 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex h-screen w-full flex-col-reverse overflow-hidden bg-[#020c1b] lg:flex-row">
-      {/* Globe: bottom on mobile, left side on desktop */}
-      <div className="h-[40vh] w-full shrink-0 bg-black lg:h-full lg:w-auto lg:flex-1">
-        <DynamicLoginGlobe />
-      </div>
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#020c1b] lg:flex-row">
+      {/* Mobile: logo + sign-in on top (compact), globe fills rest */}
+      {/* Desktop: globe on left, sign-in panel on right */}
 
       {/* Login form: top on mobile, right panel on desktop */}
-      <div className="flex min-h-0 flex-1 flex-col justify-center bg-[#0a192f] lg:w-[480px] lg:flex-none lg:shadow-[-10px_0_30px_rgba(0,0,0,0.5)]">
+      <div className="flex shrink-0 flex-col justify-center bg-[#0a192f] py-8 lg:w-[420px] lg:py-0 lg:shadow-[10px_0_30px_rgba(0,0,0,0.5)]">
         <Suspense
           fallback={
             <div className="flex items-center justify-center text-[#8892b0]">
@@ -96,6 +95,11 @@ export default function LoginPage() {
         >
           <LoginForm />
         </Suspense>
+      </div>
+
+      {/* Globe: fills remaining space below on mobile, left side on desktop */}
+      <div className="min-h-0 flex-1 bg-black lg:order-first">
+        <DynamicLoginGlobe />
       </div>
     </div>
   );
