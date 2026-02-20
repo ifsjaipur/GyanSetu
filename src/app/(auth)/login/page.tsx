@@ -32,10 +32,6 @@ function LoginForm() {
   return (
     <div className="flex w-full flex-col justify-center px-8 sm:px-12">
       <div className="mb-10">
-        {/* Show app name only on mobile (hidden on desktop where globe overlay has it) */}
-        <div className="mb-4 text-2xl font-extrabold uppercase tracking-wide text-[#64ffda] lg:hidden">
-          {APP_NAME}
-        </div>
         <h2 className="text-3xl font-bold text-[#ccd6f6]">Welcome Back</h2>
         <p className="mt-2 text-sm text-[#8892b0]">
           Sign in with your Google account to access the portal.
@@ -83,14 +79,14 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#020c1b]">
-      {/* Left panel: 3D Globe (desktop only) */}
-      <div className="hidden h-full flex-1 bg-black lg:block">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#020c1b] lg:flex-row">
+      {/* Globe: top half on mobile, left side on desktop */}
+      <div className="h-[45vh] w-full shrink-0 bg-black lg:h-full lg:w-auto lg:flex-1">
         <DynamicLoginGlobe />
       </div>
 
-      {/* Right panel: Login form — full screen on mobile, fixed width on desktop */}
-      <div className="flex h-full min-h-0 w-full shrink-0 flex-col justify-center bg-[#0a192f] lg:w-[480px] lg:shadow-[-10px_0_30px_rgba(0,0,0,0.5)]">
+      {/* Login form: bottom half on mobile, right panel on desktop */}
+      <div className="flex min-h-0 flex-1 flex-col justify-center bg-[#0a192f] lg:w-[480px] lg:flex-none lg:shadow-[-10px_0_30px_rgba(0,0,0,0.5)]">
         <Suspense
           fallback={
             <div className="flex items-center justify-center text-[#8892b0]">
