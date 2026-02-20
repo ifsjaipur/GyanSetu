@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import GlobeGL, { type GlobeMethods } from "react-globe.gl";
-import { APP_NAME } from "@/lib/utils/constants";
 
 interface GeoFeature {
   type: string;
@@ -136,12 +135,9 @@ export default function LoginGlobe() {
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
-      {/* Overlay text — desktop only (mobile has logo in the login form above) */}
-      <div className="pointer-events-none absolute left-10 top-10 z-10 hidden lg:block">
-        <h1 className="text-2xl font-extrabold uppercase tracking-wide text-[#64ffda]">
-          {APP_NAME}
-        </h1>
-        <p className="mt-1 text-sm text-[#8892b0]">
+      {/* Connecting from — bottom-left, no logo */}
+      <div className="pointer-events-none absolute bottom-6 left-6 z-10">
+        <p className="text-xs text-[#8892b0]">
           Connecting from:{" "}
           <span className="text-white">{locationName}</span>
         </p>
