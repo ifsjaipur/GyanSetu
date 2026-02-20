@@ -51,14 +51,35 @@ export async function PUT(
 
     // Domain validation: instructor and institution_admin must have org email
     if (role === UserRole.INSTRUCTOR || role === UserRole.INSTITUTION_ADMIN) {
-      if (!user.institutionId) {
+      // If user.institutionId is empty, try to resolve from approved memberships
+      let effectiveInstitutionId = user.institutionId;
+      if (!effectiveInstitutionId) {
+        const memberships = await db
+          .collection("users")
+          .doc(uid)
+          .collection("memberships")
+          .where("status", "==", "approved")
+          .limit(1)
+          .get();
+        if (!memberships.empty) {
+          effectiveInstitutionId = memberships.docs[0].id;
+          // Backfill the user's institutionId
+          await db.collection("users").doc(uid).update({
+            institutionId: effectiveInstitutionId,
+            activeInstitutionId: effectiveInstitutionId,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      if (!effectiveInstitutionId) {
         return NextResponse.json(
           { error: "User must belong to an institution before being promoted" },
           { status: 400 }
         );
       }
       const emailDomain = (user.email || "").split("@")[1];
-      const instDoc = await db.collection("institutions").doc(user.institutionId).get();
+      const instDoc = await db.collection("institutions").doc(effectiveInstitutionId).get();
       const allowedDomains: string[] = instDoc.exists
         ? instDoc.data()!.allowedEmailDomains || []
         : [];

@@ -239,6 +239,12 @@ export default function CompleteProfilePage() {
         };
       }
 
+      // If user selected an institution, also set it on the user doc
+      if (selectedInstitutionId) {
+        updateData.institutionId = selectedInstitutionId;
+        updateData.activeInstitutionId = selectedInstitutionId;
+      }
+
       await setDoc(doc(db, "users", firebaseUser.uid), updateData, { merge: true });
 
       // If user selected a child institution, create a membership request

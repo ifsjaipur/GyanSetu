@@ -66,7 +66,7 @@ export const onUserCreate = functions.region("asia-south1").auth.user().onCreate
     activeInstitutionId: matchedInstitutionId || "",
   });
 
-  // Create user document in Firestore
+  // Create user document in Firestore (merge to avoid overwriting ensureUserDoc data)
   await db
     .collection("users")
     .doc(user.uid)
@@ -100,7 +100,7 @@ export const onUserCreate = functions.region("asia-south1").auth.user().onCreate
       lastLoginAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    }, { merge: true });
 
   // For domain users: create an approved membership in the matched institution
   if (matchedInstitutionId) {

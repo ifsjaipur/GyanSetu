@@ -85,6 +85,15 @@ export async function POST(request: NextRequest) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    // Also update user's top-level institutionId if not set
+    if (!userData.institutionId) {
+      await db.collection("users").doc(userId).update({
+        institutionId,
+        activeInstitutionId: institutionId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
     writeAuditLog({
       institutionId,
       userId: caller.uid,
