@@ -108,7 +108,14 @@ export default function InstitutionEditPage() {
         if (inst.branding.headerBgColor) root.style.setProperty("--brand-header-bg", inst.branding.headerBgColor);
       } else {
         const data = await res.json();
-        setMessage(`Error: ${data.error}`);
+        if (data.details && Array.isArray(data.details)) {
+          const fields = data.details.map((d: { path?: (string | number)[]; message?: string }) =>
+            `${(d.path || []).join(".")}: ${d.message}`
+          ).join("\n");
+          setMessage(`Validation failed:\n${fields}`);
+        } else {
+          setMessage(`Error: ${data.error}`);
+        }
       }
     } catch {
       setMessage("Failed to save");
@@ -146,8 +153,8 @@ export default function InstitutionEditPage() {
       </div>
 
       {message && (
-        <div className={`mt-4 rounded-lg p-3 text-sm ${
-          message.startsWith("Error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+        <div className={`mt-4 rounded-lg p-3 text-sm whitespace-pre-line ${
+          message.startsWith("Error") || message.startsWith("Validation") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
         }`}>
           {message}
         </div>

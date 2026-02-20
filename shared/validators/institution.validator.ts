@@ -82,9 +82,9 @@ export const updateInstitutionSchema = z.object({
     website: optionalUrl.optional(),
   }).optional(),
   location: z.object({
-    country: z.string().min(2).max(100).optional(),
-    state: z.string().min(2).max(100).optional(),
-    city: z.string().min(2).max(100).optional(),
+    country: z.union([z.string().min(2).max(100), z.literal("")]).optional(),
+    state: z.union([z.string().min(2).max(100), z.literal("")]).optional(),
+    city: z.union([z.string().min(2).max(100), z.literal("")]).optional(),
     lat: z.number().min(-90).max(90).nullable().optional(),
     lng: z.number().min(-180).max(180).nullable().optional(),
     timezone: z.string().max(50).optional(),
