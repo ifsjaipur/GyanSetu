@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signInWithGoogle, createSessionCookie } from "@/lib/firebase/auth";
 import { APP_NAME } from "@/lib/utils/constants";
+import DynamicLoginGlobe from "@/components/login/DynamicLoginGlobe";
 
 function LoginForm() {
   const [loading, setLoading] = useState(false);
@@ -29,21 +30,20 @@ function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-md rounded-xl bg-[var(--card)] p-8 shadow-lg">
-      <div className="mb-8 text-center">
-        <div className="mb-2 text-3xl font-bold text-[var(--brand-primary)]">
+    <div className="flex w-full flex-col justify-center px-8 sm:px-12">
+      <div className="mb-10">
+        {/* Show app name only on mobile (hidden on desktop where globe overlay has it) */}
+        <div className="mb-4 text-2xl font-extrabold uppercase tracking-wide text-[#64ffda] lg:hidden">
           {APP_NAME}
         </div>
-        <h1 className="text-xl font-bold text-[var(--card-foreground)]">
-          Welcome Back
-        </h1>
-        <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-          Sign in with your Google account to continue
+        <h2 className="text-3xl font-bold text-[#ccd6f6]">Welcome Back</h2>
+        <p className="mt-2 text-sm text-[#8892b0]">
+          Sign in with your Google account to access the portal.
         </p>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+        <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -51,7 +51,7 @@ function LoginForm() {
       <button
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="flex w-full items-center justify-center gap-3 rounded-lg border border-[var(--border)] bg-white px-4 py-3 font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-3 rounded-lg border border-[#8892b0]/20 bg-white/5 px-4 py-4 font-medium text-[#ccd6f6] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#64ffda]/40 hover:bg-white/10 hover:shadow-[0_5px_15px_rgba(100,255,218,0.15)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24">
           <path
@@ -74,7 +74,7 @@ function LoginForm() {
         {loading ? "Signing in..." : "Continue with Google"}
       </button>
 
-      <p className="mt-6 text-center text-xs text-[var(--muted-foreground)]">
+      <p className="mt-8 text-center text-xs text-[#8892b0]/60">
         By signing in, you agree to our Terms of Service and Privacy Policy.
       </p>
     </div>
@@ -83,14 +83,24 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--muted)]">
-      <Suspense
-        fallback={
-          <div className="text-[var(--muted-foreground)]">Loading...</div>
-        }
-      >
-        <LoginForm />
-      </Suspense>
-    </main>
+    <div className="flex h-screen w-full overflow-hidden bg-[#020c1b]">
+      {/* Left panel: 3D Globe (hidden on mobile) */}
+      <div className="hidden flex-1 bg-black lg:block">
+        <DynamicLoginGlobe />
+      </div>
+
+      {/* Right panel: Login form */}
+      <div className="flex w-full flex-col justify-center bg-[#0a192f] shadow-[-10px_0_30px_rgba(0,0,0,0.5)] lg:w-[480px]">
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center text-[#8892b0]">
+              Loading...
+            </div>
+          }
+        >
+          <LoginForm />
+        </Suspense>
+      </div>
+    </div>
   );
 }
